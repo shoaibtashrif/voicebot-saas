@@ -1,0 +1,894 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Cromwell Cars Web Dispatcher</title>
+    <script type="module">
+        import { UltravoxSession } from 'https://cdn.skypack.dev/ultravox-client@0.3.6';
+        window.UltravoxSession = UltravoxSession;
+        window.ultravoxLoaded = true;
+    </script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            width: 100%;
+            background: rgba(255, 255, 255, 0.1);
+
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 40px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 10px;
+            background: linear-gradient(45deg, #fff, #e0e0e0);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+            margin-bottom: 20px;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 40px;
+            align-items: start;
+        }
+
+        .call-section {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 15px;
+            padding: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .status-section {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 15px;
+            padding: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .logo-container {
+            text-align: center;
+            margin: 40px 0;
+        }
+
+        .logo {
+            width: 80px;
+            height: 80px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            font-weight: bold;
+        }
+
+        .transcript-container {
+            height: 300px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            overflow-y: auto;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            position: relative;
+        }
+
+        .transcript-container::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .transcript-container::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+        }
+
+        .transcript-container::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 3px;
+        }
+
+        .transcript-message {
+            margin-bottom: 15px;
+            padding: 10px;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .transcript-speaker {
+            font-weight: bold;
+            color: #4fc3f7;
+            margin-bottom: 5px;
+        }
+
+        .transcript-text {
+            line-height: 1.4;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 15px 25px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(45deg, #4fc3f7, #29b6f6);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(79, 195, 247, 0.3);
+        }
+
+        .btn-danger {
+            background: linear-gradient(45deg, #f44336, #e53935);
+            color: white;
+        }
+
+        .btn-danger:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(244, 67, 54, 0.3);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        .status-indicator {
+            padding: 15px;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            margin-bottom: 20px;
+        }
+
+        .status-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #4fc3f7;
+        }
+
+        .status-text {
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            line-height: 1.4;
+        }
+
+        .overview {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .overview h3 {
+            margin-bottom: 15px;
+            color: #4fc3f7;
+        }
+
+        .overview p {
+            line-height: 1.6;
+            opacity: 0.9;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: #4fc3f7;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .fade-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 40px;
+            background: linear-gradient(to bottom, rgba(0, 0, 0, 0.2), transparent);
+            pointer-events: none;
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+
+            .container {
+                padding: 20px;
+            }
+
+            .header h1 {
+                font-size: 2rem;
+            }
+
+            .controls {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Cromwell Cars</h1>
+            <p>AI-Powered Job Dispatcher</p>
+        </div>
+
+        <div class="main-content">
+            <div class="call-section">
+                <div class="logo-container">
+                    <div class="logo">🚖</div>
+                </div>
+
+                <div id="call-interface">
+                    <div class="overview">
+                        <h3>About This Service</h3>
+                        <p>This is will take your job find the nearest driver and call the driver to reach and pick you
+                            up.</p>
+                        <!-- <div id="mobile-notice" style="display: none; margin-top: 15px; padding: 15px; background: rgba(255, 193, 7, 0.2); border-radius: 8px; border-left: 4px solid #ffc107;">
+                            <strong>📱 Mobile Users:</strong>
+                            <ul style="margin: 10px 0; padding-left: 20px;">
+                                <li>Allow microphone access when prompted</li>
+                                <li>Use headphones for better audio quality</li>
+                                <li>Ensure you're on HTTPS (secure connection)</li>
+                                <li>Try Chrome or Safari for best compatibility</li>
+                            </ul>
+                            <div style="font-size: 0.9em; margin-top: 10px; opacity: 0.8;">
+                                If the call doesn't start, check your browser's microphone permissions in settings.
+                            </div>
+                        </div> -->
+                    </div>
+
+                    <div id="transcript-container" class="transcript-container" style="display: none;">
+                        <div class="fade-overlay"></div>
+                        <div id="transcript-content"></div>
+                    </div>
+
+                    <div class="controls">
+                        <button id="start-call-btn" class="btn btn-primary">
+                            <span>📞</span>
+                            Start Call
+                        </button>
+                        <button id="end-call-btn" class="btn btn-danger" style="display: none;">
+                            <span>📞</span>
+                            End Call
+                        </button>
+                        <button id="mute-btn" class="btn btn-secondary" style="display: none;">
+                            <span id="mute-icon">🎤</span>
+                            <span id="mute-text">Mute</span>
+                        </button>
+                        <button id="test-mic-btn" class="btn btn-secondary" style="display: none;">
+                            <span>🎤</span>
+                            Test Mic
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="status-section">
+                <div class="status-indicator">
+                    <div class="status-title">Agent Status</div>
+                    <div id="agent-status" class="status-text">
+                        <span class="loading"></span> Loading configuration...
+                    </div>
+                </div>
+
+                <!-- <div class="status-indicator">
+                    <div class="status-title">Service Info</div>
+                    <div class="status-text">
+                        <div>🐍 Python FastAPI Backend</div>
+                        <div>🌐 Independent Web Service</div>
+                        <div> AI Integration</div>
+                        <div>🚖 Cromwell Cars Dispatcher</div>
+                    </div>
+                </div> -->
+
+                <div id="debug-console" class="status-indicator" style="display: none;">
+                    <div class="status-title">Debug Console</div>
+                    <div id="debug-content" class="status-text"
+                        style="max-height: 200px; overflow-y: auto; font-size: 0.8em;">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class CromwellWebDispatcher {
+            constructor() {
+                this.uvSession = null;
+                this.isCallActive = false;
+                this.config = null;
+                this.isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+                this.debugMode = window.location.search.includes('debug=true');
+                this.currentCallId = null;
+                this.startTime = null;
+                this.completionLogged = false;
+
+                this.initializeElements();
+                this.loadConfiguration();
+                this.setupEventListeners();
+                this.setupMobileSupport();
+                this.setupDebugMode();
+            }
+
+            setupDebugMode() {
+                if (this.debugMode || this.isMobile) {
+                    document.getElementById('debug-console').style.display = 'block';
+                    this.debugLog('🔧 Debug mode enabled');
+                    this.debugLog(`📱 Mobile detected: ${this.isMobile}`);
+                    this.debugLog(`🌐 User Agent: ${navigator.userAgent}`);
+                    this.debugLog(`🎤 getUserMedia available: ${!!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)}`);
+                    this.debugLog(`🔒 HTTPS: ${location.protocol === 'https:'}`);
+                }
+            }
+
+            debugLog(message) {
+                if (this.debugMode || this.isMobile) {
+                    const debugContent = document.getElementById('debug-content');
+                    const timestamp = new Date().toLocaleTimeString();
+                    debugContent.innerHTML += `<div>[${timestamp}] ${message}</div>`;
+                    debugContent.scrollTop = debugContent.scrollHeight;
+                }
+                console.log(message);
+            }
+
+            initializeElements() {
+                this.startCallBtn = document.getElementById('start-call-btn');
+                this.endCallBtn = document.getElementById('end-call-btn');
+                this.muteBtn = document.getElementById('mute-btn');
+                this.testMicBtn = document.getElementById('test-mic-btn');
+                this.agentStatus = document.getElementById('agent-status');
+                this.transcriptContainer = document.getElementById('transcript-container');
+                this.transcriptContent = document.getElementById('transcript-content');
+                this.muteIcon = document.getElementById('mute-icon');
+                this.muteText = document.getElementById('mute-text');
+            }
+
+            async loadConfiguration() {
+                try {
+                    const response = await fetch('/api/config');
+                    this.config = await response.json();
+                    this.updateStatus('✅ Configuration loaded - Ready to start call');
+                } catch (error) {
+                    console.error('Failed to load configuration:', error);
+                    this.updateStatus('⚠️ Using fallback configuration');
+                }
+
+                // Show test mic button on mobile
+                if (this.isMobile) {
+                    this.testMicBtn.style.display = 'flex';
+                }
+            }
+
+            async testMicrophone() {
+                try {
+                    this.debugLog('🧪 Testing microphone...');
+                    this.updateStatus('🔄 Testing microphone...');
+
+                    const stream = await navigator.mediaDevices.getUserMedia({
+                        audio: {
+                            echoCancellation: true,
+                            noiseSuppression: true,
+                            autoGainControl: true
+                        }
+                    });
+
+                    this.debugLog(`✅ Microphone test successful: ${stream.getTracks().length} tracks`);
+                    stream.getTracks().forEach(track => {
+                        this.debugLog(`🎤 Track: ${track.kind} - ${track.label} - Ready: ${track.readyState}`);
+                    });
+
+                    this.updateStatus('✅ Microphone test successful! You can now start a call.');
+
+                    // Stop the test stream after 2 seconds
+                    setTimeout(() => {
+                        stream.getTracks().forEach(track => {
+                            this.debugLog(`🛑 Stopping test track: ${track.kind}`);
+                            track.stop();
+                        });
+                        this.debugLog('🛑 Test microphone stream stopped');
+                    }, 2000);
+
+                } catch (error) {
+                    this.debugLog(`❌ Microphone test failed: ${error.name} - ${error.message}`);
+                    this.updateStatus(`❌ Microphone test failed: ${error.message}`);
+                }
+            }
+
+            setupEventListeners() {
+                // Add both click and touch events for better mobile compatibility
+                this.startCallBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    this.debugLog('🖱️ Start call button clicked');
+                    this.startCall();
+                });
+
+                // Add touch event for mobile
+                this.startCallBtn.addEventListener('touchend', (e) => {
+                    e.preventDefault();
+                    this.debugLog('👆 Start call button touched');
+                    this.startCall();
+                });
+
+                this.endCallBtn.addEventListener('click', () => this.endCall());
+                this.muteBtn.addEventListener('click', () => this.toggleMute());
+                this.testMicBtn.addEventListener('click', () => this.testMicrophone());
+            }
+
+            setupMobileSupport() {
+                if (this.isMobile) {
+                    this.debugLog('📱 Mobile device detected');
+                    document.getElementById('mobile-notice').style.display = 'block';
+
+                    // Check microphone availability
+                    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                        this.debugLog('✅ getUserMedia is available on mobile');
+                    } else {
+                        this.debugLog('❌ getUserMedia not available on mobile');
+                        this.updateStatus('❌ Microphone not supported on this mobile browser');
+                    }
+
+                    // Check permissions API
+                    if (navigator.permissions) {
+                        this.debugLog('✅ Permissions API available');
+                        navigator.permissions.query({ name: 'microphone' }).then(result => {
+                            this.debugLog(`🎤 Microphone permission: ${result.state}`);
+                        }).catch(err => {
+                            this.debugLog(`❌ Permission query failed: ${err.message}`);
+                        });
+                    } else {
+                        this.debugLog('❌ Permissions API not available');
+                    }
+
+                    // Add touch event listeners for better mobile interaction
+                    this.startCallBtn.addEventListener('touchstart', (e) => {
+                        this.debugLog('👆 Touch start on call button');
+                        // Don't prevent default here to allow the touchend event to work
+                        this.startCallBtn.focus();
+                    });
+
+                    // Add mobile-specific styling
+                    this.startCallBtn.style.minHeight = '48px';
+                    this.startCallBtn.style.fontSize = '18px';
+                }
+            }
+
+            updateStatus(status) {
+                this.agentStatus.innerHTML = status;
+            }
+
+            async createCall() {
+                // Use agent-specific endpoint if agent config is available
+                let endpoint = '/api/ultravox';
+                const useAgentEndpoint = window.agentConfig && window.agentConfig.companySlug;
+
+                if (useAgentEndpoint) {
+                    endpoint = `/api/ultravox/${window.agentConfig.companySlug}`;
+                    this.debugLog(`🤖 Using agent-specific endpoint: ${endpoint}`);
+                    this.debugLog(`   Agent: ${window.agentConfig.agentName}`);
+                    this.debugLog(`   Company: ${window.agentConfig.companyName}`);
+                }
+
+                // Build call config - but note: if using agent endpoint, systemPrompt will be ignored by backend
+                const callConfig = {
+                    systemPrompt: this.config?.callConfig?.systemPrompt || window.agentConfig?.systemPrompt || "You are a helpful assistant.",
+                    model: this.config?.callConfig?.model || "fixie-ai/ultravox",
+                    languageHint: "en",
+                    selectedTools: this.config?.callConfig?.selectedTools || [],
+                    voice: this.config?.callConfig?.voice || null,
+                    temperature: this.config?.callConfig?.temperature || 0.3
+                };
+
+                if (useAgentEndpoint) {
+                    this.debugLog(`   Note: systemPrompt in request will be ignored - backend uses agent's prompt`);
+                }
+
+                const headers = {
+                    'Content-Type': 'application/json'
+                };
+                
+                // Inject JWT Authorization if available
+                if (window.agentConfig && window.agentConfig.apiToken) {
+                    headers['Authorization'] = `Bearer ${window.agentConfig.apiToken}`;
+                }
+
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: headers,
+                    body: JSON.stringify(callConfig)
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+                }
+
+                return await response.json();
+            }
+
+            async startCall() {
+                try {
+                    this.debugLog('🚀 *** START CALL METHOD CALLED ***');
+                    this.debugLog('🚀 Starting call process...');
+                    this.updateStatus('🔄 Starting call...');
+                    this.startCallBtn.disabled = true;
+
+                    // Enhanced mobile microphone permission handling
+                    if (this.isMobile) {
+                        this.debugLog('📱 Mobile device - requesting microphone access');
+                        this.updateStatus('📱 Requesting microphone access...');
+
+                        // Check if getUserMedia is available
+                        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                            throw new Error('Microphone access not supported on this device/browser');
+                        }
+
+                        try {
+                            this.debugLog('🎤 Requesting microphone with enhanced settings');
+                            // Request microphone with enhanced audio settings for mobile
+                            const stream = await navigator.mediaDevices.getUserMedia({
+                                audio: {
+                                    echoCancellation: true,
+                                    noiseSuppression: true,
+                                    autoGainControl: true,
+                                    sampleRate: 48000
+                                }
+                            });
+
+                            this.debugLog(`✅ Microphone stream obtained: ${stream.getTracks().length} tracks`);
+
+                            // Stop the test stream
+                            stream.getTracks().forEach(track => {
+                                this.debugLog(`🛑 Stopping track: ${track.kind} - ${track.label}`);
+                                track.stop();
+                            });
+
+                            this.debugLog('✅ Mobile microphone permission granted');
+                            this.updateStatus('✅ Microphone access granted, connecting...');
+
+                            // Add delay for mobile processing
+                            await new Promise(resolve => setTimeout(resolve, 1000));
+
+                        } catch (permError) {
+                            this.debugLog(`❌ Mobile microphone permission denied: ${permError.name} - ${permError.message}`);
+                            this.updateStatus('❌ Microphone access required. Please:');
+                            setTimeout(() => {
+                                this.updateStatus('1️⃣ Allow microphone when prompted<br>2️⃣ Check browser settings<br>3️⃣ Try refreshing the page');
+                            }, 1000);
+                            this.startCallBtn.disabled = false;
+                            return;
+                        }
+                    } else {
+                        this.debugLog('💻 Desktop device - checking microphone');
+                        // Desktop microphone check
+                        try {
+                            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                            stream.getTracks().forEach(track => track.stop());
+                            this.debugLog('✅ Desktop microphone permission granted');
+                        } catch (permError) {
+                            this.debugLog(`❌ Desktop microphone permission denied: ${permError.message}`);
+                            this.updateStatus('❌ Microphone permission required. Please allow microphone access and try again.');
+                            this.startCallBtn.disabled = false;
+                            return;
+                        }
+                    }
+
+                    // Clear previous transcript
+                    this.transcriptContent.innerHTML = '';
+
+                    // Create call
+                    this.debugLog('🔄 Creating call session via API');
+                    this.updateStatus('🔄 Creating call session...');
+                    const callData = await this.createCall();
+                    this.debugLog(`✅ Call created: ${callData.callId}`);
+                    this.currentCallId = callData.callId;
+                    this.startTime = Date.now();
+                    this.completionLogged = false;
+
+                    // Initialize Ultravox session
+                    if (typeof UltravoxSession === 'undefined') {
+                        throw new Error('UvSession is not available. Please check if uv-client is loaded.');
+                    }
+
+                    // Mobile-optimized session configuration
+                    const sessionConfig = {
+                        experimentalMessages: new Set(["debug"])
+                    };
+
+                    if (this.isMobile) {
+                        this.debugLog('📱 Adding mobile-specific WebRTC configuration');
+                        // Add mobile-specific WebRTC configuration
+                        sessionConfig.webRtcConfig = {
+                            iceServers: [
+                                { urls: 'stun:stun.l.google.com:19302' },
+                                { urls: 'stun:stun1.l.google.com:19302' }
+                            ],
+                            iceCandidatePoolSize: 10
+                        };
+                    }
+
+                    this.debugLog('🔧 Creating UvSession');
+                    this.uvSession = new UltravoxSession(sessionConfig);
+
+                    // Setup event listeners
+                    this.uvSession.addEventListener('status', (event) => {
+                        if (this.uvSession && this.uvSession.status) {
+                            const status = this.uvSession.status;
+                            this.debugLog(`📞 Status change: ${status}`);
+                            this.updateStatus(`📞 Call Status: ${status}`);
+
+                            if (status === 'disconnected') {
+                                this.debugLog('🔌 Session disconnected');
+                                this.logCallCompletion();
+                                this.isCallActive = false;
+                                this.updateUI();
+                            }
+                        }
+                    });
+
+                    this.uvSession.addEventListener('transcript', (event) => {
+                        this.debugLog('📝 Transcript updated');
+                        this.updateTranscript();
+                    });
+
+                    this.uvSession.addEventListener('experimental_message', (event) => {
+                        this.debugLog(`🔧 Debug message: ${JSON.stringify(event)}`);
+                    });
+
+                    // Add error event listener for better debugging
+                    this.uvSession.addEventListener('error', (error) => {
+                        this.debugLog(`❌ Uv session error: ${error.message || error}`);
+                        this.updateStatus(`❌ Connection error: ${error.message || 'Unknown error'}`);
+                    });
+
+                    // Join the call
+                    this.debugLog(`🔗 Joining call with URL: ${callData.joinUrl}`);
+                    this.updateStatus('🔄 Connecting to voice agent...');
+                    await this.uvSession.joinCall(callData.joinUrl);
+
+                    this.debugLog('✅ Call joined successfully');
+                    this.isCallActive = true;
+                    this.updateUI();
+                    const agentName = window.agentConfig?.agentName || 'Alex';
+                    this.updateStatus(`✅ Call active - Speak to ${agentName}`);
+
+                } catch (error) {
+                    this.debugLog(`❌ Error starting call: ${error.message}`);
+                    this.updateStatus(`❌ Error: ${error.message}`);
+                    this.startCallBtn.disabled = false;
+                }
+            }
+
+            async endCall() {
+                try {
+                    this.updateStatus('🔄 Ending call...');
+                    this.logCallCompletion();
+
+                    if (this.uvSession) {
+                        this.uvSession.leaveCall();
+                        this.uvSession = null;
+                    }
+
+                    this.isCallActive = false;
+                    this.updateUI();
+                    this.updateStatus('✅ Call ended successfully');
+
+                } catch (error) {
+                    console.error('Error ending call:', error);
+                    this.updateStatus(`❌ Error ending call: ${error.message}`);
+                }
+            }
+
+            async logCallCompletion() {
+                if (this.completionLogged || !this.currentCallId || !this.startTime) return;
+                this.completionLogged = true;
+
+                const duration = Math.round((Date.now() - this.startTime) / 1000);
+                const agentId = window.agentConfig?.agentId;
+
+                this.debugLog(`📊 Logging completion for call ${this.currentCallId} (Duration: ${duration}s)`);
+
+                try {
+                    const response = await fetch(`/api/agents/${agentId}/log-call`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            call_id: this.currentCallId,
+                            status: 'completed',
+                            duration: duration
+                        })
+                    });
+
+                    if (response.ok) {
+                        this.debugLog('✅ Completion logged to server');
+                    } else {
+                        this.debugLog(`⚠️ Failed to log completion: ${response.status}`);
+                    }
+                } catch (error) {
+                    this.debugLog(`❌ Error logging completion: ${error.message}`);
+                }
+            }
+
+            toggleMute() {
+                if (this.uvSession) {
+                    if (this.uvSession.isMicMuted) {
+                        this.uvSession.unmuteMic();
+                        this.muteIcon.textContent = '🎤';
+                        this.muteText.textContent = 'Mute';
+                    } else {
+                        this.uvSession.muteMic();
+                        this.muteIcon.textContent = '🔇';
+                        this.muteText.textContent = 'Unmute';
+                    }
+                }
+            }
+
+            updateTranscript() {
+                if (!this.uvSession || !this.uvSession.transcripts) return;
+
+                this.transcriptContent.innerHTML = '';
+
+                this.uvSession.transcripts.forEach(transcript => {
+                    const messageDiv = document.createElement('div');
+                    messageDiv.className = 'transcript-message';
+
+                    const speakerDiv = document.createElement('div');
+                    speakerDiv.className = 'transcript-speaker';
+                    const agentName = window.agentConfig?.agentName || 'Alex';
+                    speakerDiv.textContent = transcript.speaker === 'agent' ? `${agentName} (Agent)` : 'You';
+
+                    const textDiv = document.createElement('div');
+                    textDiv.className = 'transcript-text';
+                    textDiv.textContent = transcript.text;
+
+                    messageDiv.appendChild(speakerDiv);
+                    messageDiv.appendChild(textDiv);
+                    this.transcriptContent.appendChild(messageDiv);
+                });
+
+                // Auto-scroll to bottom
+                this.transcriptContainer.scrollTop = this.transcriptContainer.scrollHeight;
+            }
+
+            updateUI() {
+                if (this.isCallActive) {
+                    this.startCallBtn.style.display = 'none';
+                    this.endCallBtn.style.display = 'flex';
+                    this.muteBtn.style.display = 'flex';
+                    this.transcriptContainer.style.display = 'block';
+                } else {
+                    this.startCallBtn.style.display = 'flex';
+                    this.startCallBtn.disabled = false;
+                    this.endCallBtn.style.display = 'none';
+                    this.muteBtn.style.display = 'none';
+                    this.transcriptContainer.style.display = 'none';
+
+                    // Reset mute button
+                    this.muteIcon.textContent = '🎤';
+                    this.muteText.textContent = 'Mute';
+                }
+            }
+        }
+
+        // Initialize the application
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('DOM loaded, waiting for Uv module...');
+
+            function checkUltravoxLoaded() {
+                if (window.ultravoxLoaded && window.UltravoxSession) {
+                    console.log('UvSession loaded via module, initializing app...');
+                    new CromwellWebDispatcher();
+                } else {
+                    console.log('Waiting for Uv module to load...');
+                    setTimeout(checkUltravoxLoaded, 500);
+                }
+            }
+
+            // Start checking after a short delay
+            setTimeout(checkUltravoxLoaded, 1000);
+
+            // Fallback after 10 seconds
+            setTimeout(() => {
+                if (!window.ultravoxLoaded) {
+                    console.error('Uv module failed to load, showing error');
+                    document.body.innerHTML = `
+                        <div style="text-align: center; padding: 50px; color: white;">
+                            <h1>Loading Error</h1>
+                            <p>Failed to load Uv client module. This might be due to network restrictions.</p>
+                            <button onclick="location.reload()" style="padding: 10px 20px; margin: 10px; background: #4fc3f7; color: white; border: none; border-radius: 5px; cursor: pointer;">Refresh Page</button>
+                            <p style="margin-top: 20px; font-size: 0.9em; opacity: 0.8;">
+                                Note: This service requires loading the uv client library from a CDN.<br>
+                                Please check your internet connection and any ad blockers.
+                            </p>
+                        </div>
+                    `;
+                }
+            }, 10000);
+        });
+
+
+    </script>
+</body>
+
+</html>

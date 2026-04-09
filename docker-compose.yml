@@ -1,0 +1,77 @@
+services:
+  # ─── Agent Management Service (FastAPI / Python) ──────────────────────────
+  agent-management:
+    build:
+      context: ./agent-management-service
+      dockerfile: Dockerfile
+    container_name: voicebot-agent-mgmt
+    restart: unless-stopped
+    ports:
+      - "5005:5005"
+    env_file:
+      - ./agent-management-service/.env
+    volumes:
+      # Persist the database across restarts/updates
+      - agent_db:/app/agents.db
+      # Persist the vector/knowledge base
+      - chroma_data:/app/chroma_data
+      # Logs accessible on host for debugging
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5005/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - voicebot-network
+
+  # ─── Twilio Dispatcher (Node.js / Express) ───────────────────────────────
+  twilio-dispatcher:
+    build:
+      context: ./cromwell-cars-ai-dispatcher
+      dockerfile: Dockerfile
+    container_name: voicebot-twilio
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - ./cromwell-cars-ai-dispatcher/.env
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      agent-management:
+        condition: service_healthy
+    networks:
+      - voicebot-network
+
+  # ─── Nginx Reverse Proxy ─────────────────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: voicebot-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx-agent.cabex.co.uk.conf:/etc/nginx/conf.d/default.conf:ro
+      # Mount SSL certificates from host (Let's Encrypt)
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - /var/www/certbot:/var/www/certbot:ro
+    depends_on:
+      - agent-management
+      - twilio-dispatcher
+    networks:
+      - voicebot-network
+
+# ─── Persistent Volumes ────────────────────────────────────────────────────
+volumes:
+  agent_db:
+    driver: local
+  chroma_data:
+    driver: local
+
+# ─── Internal Network ──────────────────────────────────────────────────────
+networks:
+  voicebot-network:
+    driver: bridge

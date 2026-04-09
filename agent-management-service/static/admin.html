@@ -1,0 +1,1410 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agent Management Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .tabs {
+            display: flex;
+            margin-bottom: 30px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .tab {
+            padding: 15px 30px;
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s ease;
+            font-weight: 600;
+        }
+
+        .tab.active {
+            border-bottom-color: #4facfe;
+            color: #4facfe;
+        }
+
+        .tab:hover {
+            background-color: #f8f9fa;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s ease;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #4facfe;
+        }
+
+        .form-group textarea {
+            height: 120px;
+            resize: vertical;
+        }
+
+        .required {
+            color: #e74c3c;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s ease;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%);
+        }
+
+        .btn-secondary {
+            background: linear-gradient(135deg, #95a5a6 0%, #7f8c8d 100%);
+        }
+
+        .agents-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .agent-card {
+            background: white;
+            border: 2px solid #e0e0e0;
+            border-radius: 12px;
+            padding: 20px;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .agent-card:hover {
+            border-color: #4facfe;
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px rgba(79, 172, 254, 0.2);
+        }
+
+        .agent-card h3 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 1.3rem;
+        }
+
+        .agent-card .company {
+            color: #666;
+            font-size: 1.1rem;
+            margin-bottom: 15px;
+        }
+
+        .agent-card .slug {
+            background: #f8f9fa;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 0.9rem;
+            color: #666;
+            margin-bottom: 15px;
+            display: inline-block;
+        }
+
+        .agent-card .status {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .status.active {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status.inactive {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .agent-actions {
+            margin-top: 15px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .agent-actions .btn {
+            padding: 8px 16px;
+            font-size: 14px;
+        }
+
+        .alert {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-weight: 600;
+        }
+
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .alert-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+
+        .knowledge-type-selector {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .knowledge-type-selector button {
+            padding: 10px 20px;
+            border: 2px solid #e0e0e0;
+            background: white;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .knowledge-type-selector button.active {
+            border-color: #4facfe;
+            background: #4facfe;
+            color: white;
+        }
+
+        .file-upload {
+            border: 2px dashed #e0e0e0;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: border-color 0.3s ease;
+        }
+
+        .file-upload:hover {
+            border-color: #4facfe;
+        }
+
+        .file-upload.dragover {
+            border-color: #4facfe;
+            background: #f8f9fa;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                margin: 10px;
+                border-radius: 10px;
+            }
+
+            .header {
+                padding: 20px;
+            }
+
+            .header h1 {
+                font-size: 2rem;
+            }
+
+            .content {
+                padding: 20px;
+            }
+
+            .agents-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .tabs {
+                flex-wrap: wrap;
+            }
+
+            .tab {
+                padding: 10px 20px;
+            }
+        }
+
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            overflow-y: auto;
+        }
+
+        .modal-content {
+            background-color: white;
+            margin: 5% auto;
+            padding: 30px;
+            border-radius: 15px;
+            width: 80%;
+            max-width: 1000px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+            position: relative;
+        }
+
+        .close {
+            position: absolute;
+            right: 20px;
+            top: 20px;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            color: #666;
+        }
+
+        .close:hover {
+            color: #333;
+        }
+
+        .call-history-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        .call-history-table th,
+        .call-history-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+
+        .call-history-table th {
+            background-color: #f8f9fa;
+            font-weight: 600;
+        }
+
+        .audio-player {
+            width: 100%;
+            max-width: 300px;
+            height: 35px;
+        }
+
+        /* --- Call Widget Styles --- */
+        #call-widget {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            width: 300px;
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            z-index: 9999;
+            display: none;
+            overflow: hidden;
+            border: 1px solid #eee;
+            animation: slideUp 0.3s ease-out;
+        }
+
+        @keyframes slideUp {
+            from { transform: translateY(100%); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .call-header {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .call-body {
+            padding: 20px;
+            text-align: center;
+        }
+
+        .call-status {
+            font-size: 0.9rem;
+            color: #666;
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+
+        .call-timer {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 20px;
+        }
+
+        .call-actions {
+            display: flex;
+            justify-content: center;
+        }
+
+        .btn-hangup {
+            background-color: #ff4d4d;
+            color: white;
+            border: none;
+            padding: 10px 25px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .btn-hangup:hover {
+            background-color: #ff3333;
+            transform: scale(1.05);
+        }
+
+        .pulse {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            background-color: #4facfe;
+            border-radius: 50%;
+            margin-right: 8px;
+            animation: pulse-animation 1.5s infinite;
+        }
+
+        @keyframes pulse-animation {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(79, 172, 254, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(79, 172, 254, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(79, 172, 254, 0); }
+        }
+    </style>
+    <!-- Import Ultravox SDK -->
+    <script type="module">
+        import { UltravoxSession } from 'https://esm.sh/ultravox-client';
+        window.UltravoxSession = UltravoxSession;
+    </script>
+</head>
+
+<body>
+    <!-- Call Widget UI -->
+    <div id="call-widget">
+        <div class="call-header">
+            <span id="call-agent-name">AI Agent Call</span>
+            <span id="call-close" style="cursor: pointer; display: none;" onclick="endWebCall()">✕</span>
+        </div>
+        <div class="call-body">
+            <div id="call-status-container">
+                <span class="pulse"></span>
+                <span id="call-status" class="call-status">Connecting...</span>
+            </div>
+            <div id="call-duration" class="call-timer">00:00</div>
+            <div class="call-actions">
+                <button id="hangup-btn" class="btn-hangup" onclick="endWebCall()">🔴 Hang Up</button>
+            </div>
+        </div>
+    </div>
+    <div class="container">
+        <div class="header">
+            <h1>🤖 Agent Management Dashboard</h1>
+            <p>Create and manage AI agents for taxi booking</p>
+        </div>
+
+        <div class="content">
+            <div class="tabs">
+                <div class="tab active" onclick="showTab('agents')">📋 All Agents</div>
+                <div class="tab" onclick="showTab('create')">➕ Create Agent</div>
+            </div>
+
+            <div id="agents-tab" class="tab-content active">
+                <div id="agents-list">
+                    <div class="loading">Loading agents...</div>
+                </div>
+            </div>
+
+            <div id="create-tab" class="tab-content">
+                <form id="create-agent-form">
+                    <div class="form-group">
+                        <label for="agent_name">Agent Name <span class="required">*</span></label>
+                        <input type="text" id="agent_name" name="agent_name" required
+                            placeholder="e.g., Alex, Sarah, Mike">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="company_name">Company Name</label>
+                        <input type="text" id="company_name" name="company_name"
+                            placeholder="e.g., Cromwell Cars, Demo Taxi">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="company_id">Company ID <span class="required">*</span></label>
+                        <input type="number" id="company_id" name="company_id" required placeholder="e.g., 541">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="greeting_message">Custom Greeting Message</label>
+                        <textarea id="greeting_message" name="greeting_message"
+                            placeholder="e.g., Welcome to our premium taxi service!"></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Knowledge Base</label>
+                        <div class="knowledge-type-selector">
+                            <button type="button" class="active" onclick="selectKnowledgeType('text')">📝 Text</button>
+                            <button type="button" onclick="selectKnowledgeType('file')">📄 File</button>
+                            <button type="button" onclick="selectKnowledgeType('url')">🔗 URL</button>
+                        </div>
+
+                        <div id="knowledge-text" class="knowledge-input">
+                            <textarea id="knowledge_base" name="knowledge_base"
+                                placeholder="Enter company-specific information..."></textarea>
+                        </div>
+
+                        <div id="knowledge-file" class="knowledge-input" style="display: none;">
+                            <div class="file-upload" onclick="document.getElementById('file-input').click()">
+                                <p>📁 Click to upload or drag & drop a text file</p>
+                                <input type="file" id="file-input" accept=".txt,.md,.csv" style="display: none;">
+                            </div>
+                        </div>
+
+                        <div id="knowledge-url" class="knowledge-input" style="display: none;">
+                            <input type="url" id="knowledge_url" placeholder="https://example.com/company-info">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="voice">AI Voice</label>
+                        <select id="voice" name="voice">
+                            <option value="">Male (Default)</option>
+                            <option value="a656a751-b754-4621-b571-e1298cb7e5bb">Female (Emma)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="web_call_pin">Web Call Security PIN <span style="color: red;">*</span></label>
+                        <input type="number" id="web_call_pin" name="web_call_pin" required min="1000" max="9999" placeholder="e.g., 1234">
+                        <small style="color: #666; font-size: 0.8rem;">A 4-digit PIN is strictly required for public web access.</small>
+                    </div>
+
+                    <button type="submit" class="btn">Create Agent</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentKnowledgeType = 'text';
+        let agents = [];
+
+        // Tab switching
+        function showTab(tabName) {
+            // Hide all tabs
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+
+            // Show selected tab
+            document.getElementById(tabName + '-tab').classList.add('active');
+            event.target.classList.add('active');
+
+            // Load agents if switching to agents tab
+            if (tabName === 'agents') {
+                loadAgents();
+            }
+        }
+
+        // Knowledge type selection
+        function selectKnowledgeType(type) {
+            currentKnowledgeType = type;
+
+            // Update button states
+            document.querySelectorAll('.knowledge-type-selector button').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+
+            // Show/hide inputs
+            document.querySelectorAll('.knowledge-input').forEach(input => {
+                input.style.display = 'none';
+            });
+            document.getElementById('knowledge-' + type).style.display = 'block';
+        }
+
+        // Load agents
+        async function loadAgents() {
+            try {
+                const response = await fetch('/api/agents');
+                agents = await response.json();
+                displayAgents();
+            } catch (error) {
+                console.error('Error loading agents:', error);
+                document.getElementById('agents-list').innerHTML = '<div class="alert alert-error">Error loading agents</div>';
+            }
+        }
+
+        // Display agents
+        function displayAgents() {
+            const container = document.getElementById('agents-list');
+
+            if (agents.length === 0) {
+                container.innerHTML = '<div class="alert">No agents created yet. Create your first agent!</div>';
+                return;
+            }
+
+            container.innerHTML = agents.map(agent => `
+                    <div class="agent-card">
+                    <div class="status ${agent.is_active ? 'active' : 'inactive'}">
+                        ${agent.is_active ? 'Active' : 'Inactive'}
+                    </div>
+                    <h3>${agent.agent_name}</h3>
+                    <div class="company">${agent.company_name || 'No company'}</div>
+                    <div class="slug" style="font-size: 0.9rem; color: #666; margin-bottom: 10px;">
+                        🆔 <strong>Slug:</strong> ${agent.company_slug}
+                    </div>
+                    <p><strong>Knowledge:</strong> ${agent.knowledge_type}</p>
+                    <p><strong>🗣️ Voice:</strong> ${agent.voice === 'a656a751-b754-4621-b571-e1298cb7e5bb' ? 'Female (Emma)' : 'Male (Default)'}</p>
+                    <p><strong>🔒 PIN:</strong> ${agent.web_call_pin || '<span style="color: #999;">Not Set</span>'}</p>
+                    <p><strong>📞 Phone:</strong> ${agent.twilio_phone_number || '<span style="color: #999;">Not assigned</span>'}</p>
+                    <div class="balance-info" style="margin: 10px 0; padding: 10px; background: #f0f4f8; border-radius: 8px; border-left: 4px solid #4facfe;">
+                        <p style="margin: 0; font-weight: 600; color: #333;">💰 Balance: ${agent.balance_amount ? agent.balance_amount.toFixed(2) : '0.00'}</p>
+                        <p style="margin: 0; font-size: 0.85rem; color: #666;">Rate: ${agent.call_rate || '0.5'}/min (~${agent.balance_minutes ? agent.balance_minutes.toFixed(2) : '0.00'} mins left)</p>
+                    </div>
+                    ${agent.has_custom_prompt ? '<p style="color: #4facfe; font-weight: 600;">✨ Custom Prompt Active</p>' : ''}
+                    ${agent.twilio_phone_number ? `
+                        <p style="font-size: 0.85rem; color: #666;">
+                            <strong>Webhook:</strong> https://agent.cabex.co.uk/twilio/incoming/${agent.company_slug}
+                        </p>
+                    ` : ''}
+                    <div class="agent-actions">
+                        <button class="btn btn-success" onclick="updateCallRate('${agent.company_slug}', ${agent.call_rate})">⚙️ Rate</button>
+                        <button class="btn btn-success" onclick="addBalance('${agent.company_slug}')">➕ Add Balance</button>
+                        <button class="btn ${agent.is_active ? 'btn-danger' : 'btn-primary'}" onclick="toggleAgent(${agent.id}, ${agent.is_active})">
+                            ${agent.is_active ? '🔴 Deactivate' : '🟢 Activate'}
+                        </button>
+                        <button class="btn" onclick="editCustomPrompt(${agent.id})">📝 Edit Prompt</button>
+                        <button class="btn" onclick="editAgent(${agent.id})">✏️ Edit</button>
+                        <button class="btn btn-secondary" onclick="viewPrompt(${agent.id})">👁️ View Prompt</button>
+                        <button class="btn" onclick="viewCallHistory(${agent.id}, '${agent.agent_name}')">📞 Details</button>
+                        <button class="btn btn-success" onclick="startWebCall(${agent.id}, '${agent.api_Token}', '${agent.agent_name}')" style="background-color: #28a745; color: white;">
+                             📞 Call Agent
+                        </button>
+                        <button class="btn ${agent.twilio_phone_number ? 'btn-danger' : ''}" onclick="managePhoneNumber(${agent.id})">
+                             📱 ${agent.twilio_phone_number ? 'Change Number' : 'Assign Number'}
+                        </button>
+                        <button class="btn btn-danger" onclick="deleteAgent(${agent.id})">🗑️ Delete</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Create agent
+        document.getElementById('create-agent-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const formData = new FormData(e.target);
+            const agentData = {
+                agent_name: formData.get('agent_name'),
+                company_name: formData.get('company_name') || null,
+                company_id: parseInt(formData.get('company_id')) || null,
+                greeting_message: formData.get('greeting_message') || null,
+                knowledge_base: null,
+                knowledge_type: currentKnowledgeType,
+                voice: formData.get('voice') || null,
+                web_call_pin: parseInt(formData.get('web_call_pin')) || null
+            };
+
+            // Handle different knowledge types
+            if (currentKnowledgeType === 'text') {
+                agentData.knowledge_base = formData.get('knowledge_base') || null;
+            } else if (currentKnowledgeType === 'file') {
+                const fileInput = document.getElementById('file-input');
+                if (fileInput.files.length > 0) {
+                    const file = fileInput.files[0];
+                    const text = await file.text();
+                    agentData.knowledge_base = text;
+                }
+            } else if (currentKnowledgeType === 'url') {
+                agentData.knowledge_base = document.getElementById('knowledge_url').value || null;
+            }
+
+            try {
+                // Check if we're editing or creating
+                const editId = e.target.dataset.editId;
+                const isEditing = editId && editId !== 'undefined';
+
+                const url = isEditing ? `/api/agents/${editId}` : '/api/agents';
+                const method = isEditing ? 'PUT' : 'POST';
+
+                const response = await fetch(url, {
+                    method: method,
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(agentData)
+                });
+
+                if (response.ok) {
+                    const action = isEditing ? 'updated' : 'created';
+                    showAlert(`Agent ${action} successfully!`, 'success');
+                    e.target.reset();
+                    delete e.target.dataset.editId;
+                    e.target.querySelector('button[type="submit"]').textContent = 'Create Agent';
+                    showTab('agents');
+                } else {
+                    const error = await response.json();
+                    showAlert('Error creating agent: ' + error.detail, 'error');
+                }
+            } catch (error) {
+                console.error('Error creating agent:', error);
+                showAlert('Error creating agent', 'error');
+            }
+        });
+
+        // Edit agent
+        function editAgent(agentId) {
+            const agent = agents.find(a => a.id === agentId);
+            if (!agent) return;
+
+            // Fill form with agent data
+            document.getElementById('agent_name').value = agent.agent_name;
+            document.getElementById('company_name').value = agent.company_name || '';
+            document.getElementById('company_id').value = agent.company_id || '';
+            document.getElementById('greeting_message').value = agent.greeting_message || '';
+
+            // Set knowledge type
+            selectKnowledgeType(agent.knowledge_type);
+            if (agent.knowledge_type === 'text') {
+                document.getElementById('knowledge_base').value = agent.knowledge_base || '';
+            } else if (agent.knowledge_type === 'url') {
+                document.getElementById('knowledge_url').value = agent.knowledge_base || '';
+            }
+
+            // Set voice & PIN
+            document.getElementById('voice').value = agent.voice || '';
+            document.getElementById('web_call_pin').value = agent.web_call_pin || '';
+
+            // Switch to create tab
+            showTab('create');
+
+            // Change form to update mode
+            const form = document.getElementById('create-agent-form');
+            form.dataset.editId = agentId;
+            form.querySelector('button[type="submit"]').textContent = 'Update Agent';
+        }
+
+        // View prompt
+        async function viewPrompt(agentId) {
+            try {
+                const response = await fetch(`/api/agents/${agentId}/prompt`);
+                const data = await response.json();
+
+                // Create modal or new window to show prompt
+                const newWindow = window.open('', '_blank', 'width=800,height=600');
+                newWindow.document.write(`
+                    <html>
+                        <head><title>Agent Prompt</title></head>
+                        <body style="font-family: monospace; padding: 20px; white-space: pre-wrap;">${data.prompt}</body>
+                    </html>
+                `);
+            } catch (error) {
+                console.error('Error loading prompt:', error);
+                showAlert('Error loading prompt', 'error');
+            }
+        }
+
+        // Toggle agent active status
+        async function toggleAgent(agentId, currentStatus) {
+            try {
+                const response = await fetch(`/api/agents/${agentId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        is_active: !currentStatus
+                    })
+                });
+
+                if (response.ok) {
+                    const action = !currentStatus ? 'activated' : 'deactivated';
+                    showAlert(`Agent ${action} successfully!`, 'success');
+                    loadAgents();
+                } else {
+                    const error = await response.json();
+                    showAlert('Error updating agent: ' + error.detail, 'error');
+                }
+            } catch (error) {
+                console.error('Error updating agent:', error);
+                showAlert('Error updating agent', 'error');
+            }
+        }
+
+        // Delete agent
+        async function deleteAgent(agentId) {
+            if (!confirm('Are you sure you want to delete this agent?')) return;
+
+            try {
+                const response = await fetch(`/api/agents/${agentId}`, {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    showAlert('Agent deleted successfully!', 'success');
+                    loadAgents();
+                } else {
+                    const error = await response.json();
+                    showAlert('Error deleting agent: ' + error.detail, 'error');
+                }
+            } catch (error) {
+                console.error('Error deleting agent:', error);
+                showAlert('Error deleting agent', 'error');
+            }
+        }
+
+        // Show alert
+        function showAlert(message, type) {
+            const alert = document.createElement('div');
+            alert.className = `alert alert-${type}`;
+            alert.textContent = message;
+
+            const content = document.querySelector('.content');
+            content.insertBefore(alert, content.firstChild);
+
+            setTimeout(() => {
+                alert.remove();
+            }, 5000);
+        }
+
+        // File upload handling
+        document.getElementById('file-input').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const uploadDiv = document.querySelector('.file-upload');
+                uploadDiv.innerHTML = `<p>📄 Selected: ${file.name}</p>`;
+            }
+        });
+
+        // Drag and drop
+        const fileUpload = document.querySelector('.file-upload');
+        fileUpload.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            fileUpload.classList.add('dragover');
+        });
+
+        fileUpload.addEventListener('dragleave', () => {
+            fileUpload.classList.remove('dragover');
+        });
+
+        fileUpload.addEventListener('drop', (e) => {
+            e.preventDefault();
+            fileUpload.classList.remove('dragover');
+
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                document.getElementById('file-input').files = files;
+                fileUpload.innerHTML = `<p>📄 Selected: ${files[0].name}</p>`;
+            }
+        });
+
+        // Manage phone number
+        async function managePhoneNumber(agentId) {
+            const agent = agents.find(a => a.id === agentId);
+            if (!agent) return;
+
+            if (agent.twilio_phone_number) {
+                // Option to unassign or change
+                if (!confirm(`Current number: ${agent.twilio_phone_number}\n\nDo you want to unassign this number?`)) {
+                    return;
+                }
+
+                try {
+                    const response = await fetch(`/api/agents/${agentId}/twilio/unassign`, {
+                        method: 'DELETE'
+                    });
+
+                    if (response.ok) {
+                        showAlert('Phone number unassigned successfully!', 'success');
+                        loadAgents();
+                    } else {
+                        const error = await response.json();
+                        showAlert('Error unassigning number: ' + error.detail, 'error');
+                    }
+                } catch (error) {
+                    showAlert('Error unassigning phone number', 'error');
+                }
+            } else {
+                // Assign new number
+                try {
+                    // Fetch available Twilio numbers
+                    console.log('Fetching Twilio numbers from API...');
+                    const apiUrl = window.location.origin + '/api/twilio/numbers/purchased';
+                    console.log('API URL:', apiUrl);
+
+                    const response = await fetch(apiUrl);
+                    console.log('Response status:', response.status);
+
+                    if (!response.ok) {
+                        let errorMsg = 'Unknown error';
+                        try {
+                            const error = await response.json();
+                            errorMsg = error.detail || JSON.stringify(error);
+                        } catch (e) {
+                            errorMsg = await response.text();
+                        }
+                        console.error('Error fetching numbers:', errorMsg);
+                        showAlert('Error fetching numbers: ' + errorMsg, 'error');
+                        return;
+                    }
+
+                    const data = await response.json();
+                    const numbers = data.purchased_numbers || [];
+
+                    if (numbers.length === 0) {
+                        showAlert('No Twilio numbers available. Purchase numbers from Twilio console first.', 'error');
+                        return;
+                    }
+
+                    // Find unassigned numbers
+                    const assignedNumbers = agents.filter(a => a.twilio_phone_number).map(a => a.twilio_phone_number);
+                    const availableNumbers = numbers.filter(n => !assignedNumbers.includes(n.phone_number));
+
+                    if (availableNumbers.length === 0) {
+                        showAlert('All Twilio numbers are already assigned to other agents.', 'error');
+                        return;
+                    }
+
+                    // Create selection dialog
+                    const numberList = availableNumbers.map((n, i) =>
+                        `${i + 1}. ${n.phone_number} ${n.friendly_name ? '(' + n.friendly_name + ')' : ''}`
+                    ).join('\n');
+
+                    const selection = prompt(`Available Twilio Numbers:\n\n${numberList}\n\nEnter the number to assign (e.g., ${availableNumbers[0].phone_number}):`);
+
+                    if (!selection) return;
+
+                    const selectedNumber = availableNumbers.find(n => n.phone_number === selection);
+                    if (!selectedNumber) {
+                        showAlert('Invalid number selection', 'error');
+                        return;
+                    }
+
+                    // Assign the number
+                    const assignFormData = new FormData();
+                    assignFormData.append('phone_number', selectedNumber.phone_number);
+
+                    const assignResponse = await fetch(`/api/agents/${agentId}/twilio/assign`, {
+                        method: 'POST',
+                        body: assignFormData
+                    });
+
+                    if (assignResponse.ok) {
+                        const result = await assignResponse.json();
+                        showAlert(result.message + '\n\nWebhook configured: ' + result.webhook_url, 'success');
+                        loadAgents();
+                    } else {
+                        const error = await assignResponse.json();
+                        showAlert('Error assigning number: ' + error.detail, 'error');
+                    }
+
+                } catch (error) {
+                    console.error('Error managing phone number:', error);
+                    showAlert('Error managing phone number: ' + error.message, 'error');
+                }
+            }
+        }
+
+        // Load agents on page load
+        loadAgents();
+
+        // Call History Modal Logic
+        async function viewCallHistory(agentId, agentName) {
+            const modal = document.getElementById('call-history-modal');
+            const title = document.getElementById('modal-agent-name');
+            const list = document.getElementById('call-history-list');
+
+            title.textContent = `Call History for ${agentName}`;
+            list.innerHTML = '<div class="loading">Loading call history...</div>';
+            modal.style.display = 'block';
+
+            try {
+                const response = await fetch(`/api/agents/${agentId}/call-history`);
+                const calls = await response.json();
+
+                if (calls.length === 0) {
+                    list.innerHTML = '<div class="alert">No calls found for this agent.</div>';
+                    return;
+                }
+
+                list.innerHTML = `
+                    <table class="call-history-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>From</th>
+                                <th>Status</th>
+                                <th>Duration</th>
+                                <th>Recording</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${calls.map(call => `
+                                <tr>
+                                    <td>${new Date(call.created_at).toLocaleString()}</td>
+                                    <td>${call.caller_number || 'Unknown'}</td>
+                                    <td><span class="status ${call.status === 'completed' ? 'active' : ''}">${call.status}</span></td>
+                                    <td>${call.duration ? call.duration + 's' : '-'}</td>
+                                    <td>
+                                        ${call.recording_url ? `
+                                            <audio controls class="audio-player">
+                                                <source src="${call.recording_url}" type="audio/mpeg">
+                                                Your browser does not support the audio element.
+                                            </audio>
+                                        ` : 'No recording'}
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `;
+            } catch (error) {
+                console.error('Error loading call history:', error);
+                list.innerHTML = '<div class="alert alert-error">Error loading call history</div>';
+            }
+        }
+
+        // Custom Prompt Editor
+        async function editCustomPrompt(agentId) {
+            const agent = agents.find(a => a.id === agentId);
+            if (!agent) return;
+
+            const modal = document.getElementById('custom-prompt-modal');
+            const title = document.getElementById('prompt-modal-agent-name');
+            const textarea = document.getElementById('custom-prompt-textarea');
+            const statusDiv = document.getElementById('prompt-status');
+
+            title.textContent = `Edit Custom Prompt for ${agent.agent_name}`;
+            textarea.value = ''; // Clear first
+            statusDiv.innerHTML = '<div class="loading">Loading current prompt...</div>';
+            modal.style.display = 'block';
+
+            try {
+                // Fetch current custom prompt
+                const response = await fetch(`/api/admin-updates/agents/${agentId}/custom-prompt`);
+                const data = await response.json();
+
+                if (data.has_custom_prompt) {
+                    textarea.value = data.custom_prompt;
+                    statusDiv.innerHTML = '<div class="alert alert-success">✨ Using custom prompt (overrides default)</div>';
+                } else {
+                    textarea.value = '';
+                    textarea.placeholder = 'Enter custom prompt here (leave empty to use default)\n\nExample:\nYou are a helpful medical assistant for XYZ Clinic. Help patients schedule appointments and answer general health questions.';
+                    statusDiv.innerHTML = '<div class="alert">Currently using default prompt with company substitutions. Enter a custom prompt to override.</div>';
+                }
+
+                // Store agent ID for save function
+                modal.dataset.editAgentId = agentId;
+            } catch (error) {
+                console.error('Error loading custom prompt:', error);
+                statusDiv.innerHTML = '<div class="alert alert-error">Error loading prompt</div>';
+            }
+        }
+
+        async function saveCustomPrompt() {
+            const modal = document.getElementById('custom-prompt-modal');
+            const agentId = modal.dataset.editAgentId;
+            const textarea = document.getElementById('custom-prompt-textarea');
+            const statusDiv = document.getElementById('prompt-status');
+            const customPrompt = textarea.value.trim();
+
+            try {
+                statusDiv.innerHTML = '<div class="loading">Saving...</div>';
+
+                const formData = new FormData();
+                if (customPrompt) {
+                    formData.append('custom_prompt', customPrompt);
+                }
+
+                const response = await fetch(`/api/admin-updates/agents/${agentId}/custom-prompt`, {
+                    method: 'PUT',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    statusDiv.innerHTML = `<div class="alert alert-success">${result.message}</div>`;
+                    showAlert(result.message, 'success');
+
+                    // Reload agents to update UI
+                    await loadAgents();
+
+                    // Close modal after 1 second
+                    setTimeout(() => {
+                        closePromptModal();
+                    }, 1000);
+                } else {
+                    statusDiv.innerHTML = `<div class="alert alert-error">Error: ${result.detail}</div>`;
+                }
+            } catch (error) {
+                console.error('Error saving custom prompt:', error);
+                statusDiv.innerHTML = '<div class="alert alert-error">Error saving prompt</div>';
+            }
+        }
+
+        async function resetToDefault() {
+            if (!confirm('Reset to default prompt? This will remove your custom prompt.')) return;
+
+            const modal = document.getElementById('custom-prompt-modal');
+            const agentId = modal.dataset.editAgentId;
+            const statusDiv = document.getElementById('prompt-status');
+
+            try {
+                statusDiv.innerHTML = '<div class="loading">Resetting...</div>';
+
+                const response = await fetch(`/api/admin-updates/agents/${agentId}/custom-prompt`, {
+                    method: 'PUT'
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    document.getElementById('custom-prompt-textarea').value = '';
+                    statusDiv.innerHTML = `<div class="alert alert-success">${result.message}</div>`;
+                    showAlert(result.message, 'success');
+
+                    // Reload agents to update UI
+                    await loadAgents();
+
+                    // Close modal after 1 second
+                    setTimeout(() => {
+                        closePromptModal();
+                    }, 1000);
+                } else {
+                    statusDiv.innerHTML = `<div class="alert alert-error">Error: ${result.detail}</div>`;
+                }
+            } catch (error) {
+                console.error('Error resetting prompt:', error);
+                statusDiv.innerHTML = '<div class="alert alert-error">Error resetting prompt</div>';
+            }
+        }
+
+        function closePromptModal() {
+            document.getElementById('custom-prompt-modal').style.display = 'none';
+        }
+
+        function closeModal() {
+            document.getElementById('call-history-modal').style.display = 'none';
+        }
+
+        // Close modal when clicking outside
+        window.onclick = function (event) {
+            const callModal = document.getElementById('call-history-modal');
+            const promptModal = document.getElementById('custom-prompt-modal');
+
+            if (event.target == callModal) {
+                callModal.style.display = 'none';
+            }
+            if (event.target == promptModal) {
+                promptModal.style.display = 'none';
+            }
+        }
+
+        /* --- Web Call Logic --- */
+        let activeSession = null;
+        let callStartTime = null;
+        let pingerInterval = null;
+
+        async function startWebCall(agentId, apiToken, agentName) {
+            if (activeSession) {
+                showAlert('You are already in a call!', 'error');
+                return;
+            }
+
+            try {
+                // 1. Show pre-call state
+                const widget = document.getElementById('call-widget');
+                const statusLabel = document.getElementById('call-status');
+                const agentLabel = document.getElementById('call-agent-name');
+                const durationLabel = document.getElementById('call-duration');
+                
+                agentLabel.textContent = `Calling ${agentName}...`;
+                statusLabel.textContent = 'Requesting session...';
+                durationLabel.textContent = '00:00';
+                widget.style.display = 'block';
+
+                // 2. Fetch Join URL from backend
+                const response = await fetch(`/api/agents/${agentId}/web-call`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${apiToken}`
+                    }
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Failed to start call');
+                }
+
+                const data = await response.json();
+                const joinUrl = data.joinUrl;
+
+                // 3. Initialize Ultravox Session
+                if (!window.UltravoxSession) {
+                    throw new Error('Ultravox SDK failed to load. Please refresh the page.');
+                }
+
+                activeSession = new window.UltravoxSession();
+                
+                // Handle Session Status
+                activeSession.addEventListener('statuschange', (event) => {
+                    const status = activeSession.status.toLowerCase();
+                    console.log('Ultravox Session Status:', status);
+                    statusLabel.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+                    
+                    if (status === 'started' || status === 'connected') {
+                        if (!callStartTime) {
+                            callStartTime = Date.now();
+                            startTimer();
+                        }
+                        agentLabel.textContent = `On call with ${agentName}`;
+                    } else if (status === 'disconnected') {
+                        cleanupCall();
+                    }
+                });
+
+                // Handle Errors
+                activeSession.addEventListener('error', (event) => {
+                    console.error('Ultravox Session Error:', event);
+                    showAlert('Call Error', 'error');
+                    cleanupCall();
+                });
+
+                // 4. Join the call
+                await activeSession.joinCall(joinUrl);
+                console.log('✅ Call joined successfully');
+
+            } catch (error) {
+                console.error('Error starting web call:', error);
+                showAlert('Could not start call: ' + error.message, 'error');
+                cleanupCall();
+            }
+        }
+
+        function endWebCall() {
+            if (activeSession) {
+                activeSession.leaveCall();
+                cleanupCall();
+            }
+        }
+
+        function cleanupCall() {
+            if (activeSession) {
+                activeSession = null;
+            }
+            if (pingerInterval) {
+                clearInterval(pingerInterval);
+                pingerInterval = null;
+            }
+            callStartTime = null;
+            
+            document.getElementById('call-widget').style.display = 'none';
+            document.getElementById('call-status').textContent = 'Disconnected';
+        }
+
+        function startTimer() {
+            if (pingerInterval) clearInterval(pingerInterval);
+            
+            pingerInterval = setInterval(() => {
+                const elapsed = Date.now() - callStartTime;
+                const seconds = Math.floor((elapsed / 1000) % 60);
+                const minutes = Math.floor((elapsed / (1000 * 60)) % 60);
+                
+                document.getElementById('call-duration').textContent = 
+                    (minutes < 10 ? '0' + minutes : minutes) + ':' + 
+                    (seconds < 10 ? '0' + seconds : seconds);
+            }, 1000);
+        }
+
+        async function addBalance(companySlug) {
+            const amount = prompt("Enter amount to add (in balance units):", "20");
+            if (!amount || isNaN(amount)) return;
+
+            try {
+                const formData = new FormData();
+                formData.append('amount_gbp', amount);
+                
+                const response = await fetch(`/api/companies/${companySlug}/balance/add`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    showAlert(`Balance updated! New balance: ${data.new_balance_amount.toFixed(2)}`, 'success');
+                    loadAgents();
+                } else {
+                    showAlert('Failed to update balance', 'error');
+                }
+            } catch (error) {
+                console.error('Error adding balance:', error);
+                showAlert('Error adding balance', 'error');
+            }
+        }
+
+        async function updateCallRate(companySlug, currentRate) {
+            const newRate = prompt("Enter new call rate (units per minute):", currentRate || "0.5");
+            if (newRate === null || isNaN(newRate)) return;
+
+            try {
+                const formData = new FormData();
+                formData.append('rate', newRate);
+                
+                const response = await fetch(`/api/companies/${companySlug}/call-rate/update`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    showAlert(`Rate updated to ${data.new_rate}/min!`, 'success');
+                    loadAgents();
+                } else {
+                    showAlert('Failed to update rate', 'error');
+                }
+            } catch (error) {
+                console.error('Error updating rate:', error);
+                showAlert('Error updating rate', 'error');
+            }
+        }
+    </script>
+
+    <!-- Call History Modal -->
+    <div id="call-history-modal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal()">&times;</span>
+            <h2 id="modal-agent-name">Call History</h2>
+            <div id="call-history-list"></div>
+        </div>
+    </div>
+
+    <!-- Custom Prompt Editor Modal -->
+    <div id="custom-prompt-modal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closePromptModal()">&times;</span>
+            <h2 id="prompt-modal-agent-name">Edit Custom Prompt</h2>
+            <div id="prompt-status"></div>
+
+            <div style="margin-top: 20px;">
+                <label style="display: block; margin-bottom: 10px; font-weight: 600;">
+                    Custom System Prompt:
+                </label>
+                <textarea id="custom-prompt-textarea"
+                    style="width: 100%; height: 400px; padding: 15px; border: 2px solid #e0e0e0; border-radius: 8px; font-family: monospace; font-size: 14px; line-height: 1.6;"
+                    placeholder="Enter your custom prompt here..."></textarea>
+            </div>
+
+            <div style="margin-top: 20px; display: flex; gap: 10px;">
+                <button class="btn" onclick="saveCustomPrompt()">💾 Save Custom Prompt</button>
+                <button class="btn btn-danger" onclick="resetToDefault()">🔄 Reset to Default</button>
+                <button class="btn btn-secondary" onclick="closePromptModal()">Cancel</button>
+            </div>
+
+            <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; font-size: 0.9rem;">
+                <strong>💡 How it works:</strong>
+                <ul style="margin: 10px 0 0 20px;">
+                    <li><strong>Custom Prompt:</strong> Completely replaces the default taxi booking prompt</li>
+                    <li><strong>Default Prompt:</strong> Uses taxi booking template with your company name</li>
+                    <li><strong>Tools:</strong> Same tools (BookCab, checkPricing, etc.) regardless of prompt</li>
+                    <li><strong>Auto-injected:</strong> Time awareness & Company ID always added</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>
