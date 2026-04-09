@@ -12,7 +12,7 @@ services:
       - ./agent-management-service/.env
     volumes:
       # Persist the database across restarts/updates
-      - agent_db:/app/agents.db
+      - ./agent-management-service/agents.db:/app/agents.db
       # Persist the vector/knowledge base
       - chroma_data:/app/chroma_data
       # Logs accessible on host for debugging
@@ -66,8 +66,6 @@ services:
 
 # ─── Persistent Volumes ────────────────────────────────────────────────────
 volumes:
-  agent_db:
-    driver: local
   chroma_data:
     driver: local
 

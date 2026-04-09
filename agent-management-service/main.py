@@ -2634,6 +2634,8 @@ async def agent_interface(company_slug: str, request: Request, session_token: st
     html_content = html_content.replace("Cromwell Cars", agent.company_name or "AI Assistant")
     html_content = html_content.replace("AI-Powered Job Dispatcher", f"{agent.agent_name} - AI Assistant")
 
+    # Pre-compute escaped prompt (backslash not allowed inside f-string in Python 3.12+)
+    escaped_prompt = agent_prompt.replace('`', '\\`')
     agent_config_script = f"""
     <script>
         window.agentConfig = {{
@@ -2643,7 +2645,7 @@ async def agent_interface(company_slug: str, request: Request, session_token: st
             companySlug: "{agent.company_slug}",
             greetingMessage: "{agent.greeting_message or ''}",
             apiToken: "{frontend_token}",
-            systemPrompt: `{agent_prompt.replace('`', '\\`')}`
+            systemPrompt: `{escaped_prompt}`
         }};
     </script>
     """
