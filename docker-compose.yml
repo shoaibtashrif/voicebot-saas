@@ -11,8 +11,8 @@ services:
     env_file:
       - ./agent-management-service/.env
     volumes:
-      # Persist the database across restarts/updates
-      - ./agent-management-service/agents.db:/app/agents.db
+      # Persist the database directory across restarts/updates to avoid missing-file directory creation bug
+      - ./agent-management-service/data:/app/data
       # Persist the vector/knowledge base
       - chroma_data:/app/chroma_data
       # Logs accessible on host for debugging
