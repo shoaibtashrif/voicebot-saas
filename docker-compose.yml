@@ -11,8 +11,8 @@ services:
     env_file:
       - ./agent-management-service/.env
     volumes:
-      # Persist the database directory across restarts/updates to avoid missing-file directory creation bug
-      - ./agent-management-service/data:/app/data
+      # Persist the database across restarts/updates
+      - ./agent-management-service/agents.db:/app/agents.db
       # Persist the vector/knowledge base
       - chroma_data:/app/chroma_data
       # Logs accessible on host for debugging
@@ -42,25 +42,6 @@ services:
     depends_on:
       agent-management:
         condition: service_healthy
-    networks:
-      - voicebot-network
-
-  # ─── Nginx Reverse Proxy ─────────────────────────────────────────────────
-  nginx:
-    image: nginx:alpine
-    container_name: voicebot-nginx
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx-agent.cabex.co.uk.conf:/etc/nginx/conf.d/default.conf:ro
-      # Mount SSL certificates from host (Let's Encrypt)
-      - /etc/letsencrypt:/etc/letsencrypt:ro
-      - /var/www/certbot:/var/www/certbot:ro
-    depends_on:
-      - agent-management
-      - twilio-dispatcher
     networks:
       - voicebot-network
 
