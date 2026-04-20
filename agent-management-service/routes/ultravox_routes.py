@@ -35,6 +35,7 @@ class UltravoxCallResponse(BaseModel):
     systemPrompt: str
     temperature: float
     joinUrl: str
+    cabeeCallId: Optional[str] = None
 
 @router.post("/ultravox", response_model=UltravoxCallResponse)
 async def create_ultravox_call(call_config: CallConfig):
@@ -61,6 +62,38 @@ async def create_ultravox_call(call_config: CallConfig):
     if call_config.timeExceededMessage:
         config_data["timeExceededMessage"] = call_config.timeExceededMessage
     
+    # 🆔 GENERATE DYNAMIC CABEE CALL ID
+    import uuid
+    cabee_call_id = f"C-{uuid.uuid4().hex[:8].upper()}"
+    print(f"🆔 Generated Dynamic Cabee Call ID: {cabee_call_id}")
+    
+    # 💉 INJECT CABEE CALL ID INTO TOOLS
+    base_tools = call_config.selectedTools if call_config.selectedTools else config_data.get("selectedTools", [])
+    final_tools = []
+    if base_tools:
+        for tool in base_tools:
+            try:
+                if "temporaryTool" in tool:
+                    temp_tool = tool["temporaryTool"]
+                    if "dynamicParameters" not in temp_tool:
+                        temp_tool["dynamicParameters"] = []
+                    temp_tool["dynamicParameters"].append({
+                        "name": "cabee_call_id",
+                        "location": "PARAMETER_LOCATION_QUERY",
+                        "schema": {
+                            "type": "string",
+                            "default": cabee_call_id,
+                            "description": "Internal Session ID"
+                        },
+                        "required": True
+                    })
+                final_tools.append(tool)
+            except Exception as e:
+                final_tools.append(tool)
+    
+    config_data["selectedTools"] = final_tools
+    print(f"🛠️ Final Selected Tools: {json.dumps(final_tools, indent=2)}")
+
     # Log the configuration being sent
     print(f"🤖 Creating Ultravox call with config:")
     print(f"   Model: {config_data.get('model')}")
@@ -105,7 +138,8 @@ async def create_ultravox_call(call_config: CallConfig):
                 model=result["model"],
                 systemPrompt=result["systemPrompt"],
                 temperature=result["temperature"],
-                joinUrl=result["joinUrl"]
+                joinUrl=result["joinUrl"],
+                cabeeCallId=cabee_call_id
             )
             
     except httpx.RequestError as e:
@@ -214,6 +248,11 @@ async def create_agent_ultravox_call(
     except httpx.RequestError as e:
         raise HTTPException(status_code=500, detail=f"Unable to connect to agent management service: {str(e)}")
     
+    # 🆔 GENERATE DYNAMIC CABEE CALL ID
+    import uuid
+    cabee_call_id = f"C-{uuid.uuid4().hex[:8].upper()}"
+    print(f"🆔 Generated Dynamic Cabee Call ID for Web Call: {cabee_call_id}")
+
     # Calculate max duration based on balance
     balance_minutes = balance_data.get("balance_minutes", 0)
     time_limit_seconds = int(balance_minutes * 60)
@@ -223,8 +262,40 @@ async def create_agent_ultravox_call(
     
     # CRITICAL: Always use agent's prompt, never allow override from frontend
     config_data["systemPrompt"] = agent_prompt
-    config_data["selectedTools"] = agent_tools if agent_tools else config_data.get("selectedTools", [])
     
+    # Determine base tools to use
+    base_tools = agent_tools if agent_tools else config_data.get("selectedTools", [])
+    
+    # 💉 INJECT CABEE CALL ID INTO TOOLS
+    final_tools = []
+    if base_tools:
+        for tool in base_tools:
+            try:
+                if "temporaryTool" in tool:
+                    temp_tool = tool["temporaryTool"]
+                    if "dynamicParameters" not in temp_tool:
+                        temp_tool["dynamicParameters"] = []
+                    
+                    # Add cabee_call_id parameter to dynamicParameters
+                    # We set it as a required query parameter with a default value
+                    temp_tool["dynamicParameters"].append({
+                        "name": "cabee_call_id",
+                        "location": "PARAMETER_LOCATION_QUERY",
+                        "schema": {
+                            "type": "string",
+                            "default": cabee_call_id,
+                            "description": "Internal Session ID"
+                        },
+                        "required": True
+                    })
+                    print(f"💉 Injected cabee_call_id into dynamicParameters for: {temp_tool.get('modelToolName')}")
+                final_tools.append(tool)
+            except Exception as tool_err:
+                print(f"⚠️ Warning: Could not inject Cabee ID into tool: {tool_err}")
+                final_tools.append(tool)
+                
+    config_data["selectedTools"] = final_tools
+    print(f"🛠️ Final Selected Tools for Ultravox: {json.dumps(final_tools, indent=2)}")
     # SET ENFORCEMENT PARAMETERS
     config_data["maxDuration"] = f"{time_limit_seconds}s"
     config_data["timeExceededMessage"] = "I'm sorry, but your company's balance has run out. Please contact your administrator to add funds. Goodbye!"
@@ -282,13 +353,11 @@ async def create_agent_ultravox_call(
             result = response.json()
             call_id = result.get('callId', '')
             print(f"✅ Ultravox call created successfully for agent '{agent['agent_name']}': {call_id}")
-            
-            # REGISTER CALL_ID in internal python registry
             # This lets bookCab look up the callId without needing HTTP headers or AI parameter passing
             try:
                 from registry import register_call
-                register_call(call_id)
-                print(f"📌 Registered callId in internal registry: {call_id}")
+                register_call(call_id, cabee_call_id=cabee_call_id)
+                print(f"📌 Registered callId {call_id} with Cabee ID {cabee_call_id} in internal registry")
             except Exception as e:
                 print(f"⚠️ Warning: Could not register callId internally: {e}")
             
@@ -297,12 +366,12 @@ async def create_agent_ultravox_call(
                 cromwell_dispatcher_url = os.getenv("CROMWELL_DISPATCHER_URL", "http://localhost:3000")
                 register_response = await client.post(
                     f"{cromwell_dispatcher_url}/cromwell/register-call",
-                    json={"call_id": call_id},
+                    json={"call_id": call_id, "cabee_call_id": cabee_call_id},
                     timeout=5.0
                 )
             except Exception as e:
                 pass
-
+ 
             
             # Log the call to agent management service
             try:
@@ -310,11 +379,12 @@ async def create_agent_ultravox_call(
                     f"{agent_management_url}/api/agents/{agent['id']}/log-call",
                     json={
                         "call_id": result["callId"],
+                        "cabee_call_id": cabee_call_id,
                         "status": "initiated",
                         "caller_number": "Web Call"
                     }
                 )
-                print(f"📝 Web call logged to management service")
+                print(f"📝 Web call logged to management service with Cabee ID: {cabee_call_id}")
             except Exception as e:
                 print(f"⚠️ Warning: Could not log web call: {e}")
             
@@ -325,7 +395,8 @@ async def create_agent_ultravox_call(
                 model=result["model"],
                 systemPrompt=result["systemPrompt"],
                 temperature=result["temperature"],
-                joinUrl=result["joinUrl"]
+                joinUrl=result["joinUrl"],
+                cabeeCallId=cabee_call_id
             )
             
     except httpx.RequestError as e:

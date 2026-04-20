@@ -15,18 +15,23 @@ async def register_call_endpoint(request: Request):
     try:
         data = await request.json()
         call_id = data.get("call_id")
+        cabee_call_id = data.get("cabee_call_id")
+        
         if not call_id:
             raise HTTPException(status_code=400, detail="call_id is required")
         
         try:
             from registry import register_call
-            register_call(call_id)
-            print(f"📌 Registered callId via API: {call_id}")
+            register_call(call_id, cabee_call_id=cabee_call_id)
+            if cabee_call_id:
+                print(f"📌 Registered callId {call_id} with Cabee ID {cabee_call_id} via API")
+            else:
+                print(f"📌 Registered callId via API: {call_id}")
         except ImportError:
             print("⚠️ Warning: Could not import internal registry for API call")
             pass
             
-        return {"status": "ok", "call_id": call_id}
+        return {"status": "ok", "call_id": call_id, "cabee_call_id": cabee_call_id}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -111,12 +116,14 @@ def _normalize_stops(stops: Any) -> List[str]:
 async def _save_job_record(
     call_sid: str,
     booking_result: Dict[str, Any],
-    vehicle_type: Optional[str]
+    vehicle_type: Optional[str],
+    cabee_call_id: Optional[str] = None
 ) -> None:
     base_url = os.getenv("TOOLS_BASE_URL", "https://agent.cabex.co.uk").rstrip("/")
     fallback_url = "http://127.0.0.1:5005"
     payload = {
         "call_sid": call_sid or "unknown",
+        "cabee_call_id": cabee_call_id or "unknown",
         "jobNO": str(booking_result.get("jobNO") or ""),
         "bookingId": str(booking_result.get("id") or ""),
         "passengerName": booking_result.get("passengerName"),
@@ -557,6 +564,10 @@ async def book_cab(request: BookingRequest, http_request: Request):
     timestamp = datetime.now().isoformat()
     jwt_token = await resolve_cabee_token(request.companyId, request.companySlug)
     
+    # 🆔 RETRIEVE CABEE CALL ID FROM QUERY PARAMS
+    cabee_call_id = http_request.query_params.get("cabee_call_id")
+    print(f"🆔 Tool called with Cabee Call ID: {cabee_call_id}")
+    
     try:
         print(f"\n🚖 ===== BOOKING TOOL CALLED =====")
         print(f"📅 Timestamp: {timestamp}")
@@ -565,7 +576,7 @@ async def book_cab(request: BookingRequest, http_request: Request):
         print(f"🎯 OPERATION: {request.operation}")
         
         if request.operation == "cabBooking":
-            return await handle_create_booking(request, jwt_token, call_id, http_request)
+            return await handle_create_booking(request, jwt_token, call_id, http_request, cabee_call_id)
         elif request.operation == "getBooking":
             return await handle_get_booking(request, jwt_token, call_id)
         elif request.operation == "updateBooking":
@@ -599,10 +610,46 @@ async def book_cab(request: BookingRequest, http_request: Request):
             "data": None
         }
 
-async def handle_create_booking(request: BookingRequest, jwt_token: str, call_id: str, http_request: Request):
+async def handle_create_booking(request: BookingRequest, jwt_token: str, call_id: str, http_request: Request, cabee_call_id: str = None):
     """Handle cab booking creation"""
     
     print(f"\n📝 === CREATE BOOKING OPERATION ===")
+    
+    # 🔍 RESOLVE AUTHENTIC CALL IDENTIFIER (CABEE CALL ID IS PRIMARY)
+    final_call_sid_for_cabee = cabee_call_id or "unknown"
+    
+    # If no Cabee ID was passed via URL, try to resolve it from the Ultravox call ID in headers
+    if final_call_sid_for_cabee == "unknown":
+        ultravox_call_sid = (
+            http_request.headers.get("x-ultravox-call-id")
+            or http_request.headers.get("x-call-id")
+            or http_request.headers.get("X-Call-ID")
+        )
+        if ultravox_call_sid:
+            try:
+                from registry import active_call_registry
+                # Check our local registry for a mapped Cabee ID
+                entry = active_call_registry.get(ultravox_call_sid)
+                if entry and entry.get("cabee_call_id"):
+                    final_call_sid_for_cabee = entry["cabee_call_id"]
+                    print(f"✅ Resolved Cabee ID from headers mapping: {final_call_sid_for_cabee}")
+                else:
+                    # If still unknown, use the Ultravox ID as fallback
+                    final_call_sid_for_cabee = ultravox_call_sid
+                    print(f"🔄 Fallback: Using Ultravox ID as Call SID: {final_call_sid_for_cabee}")
+            except Exception as e:
+                final_call_sid_for_cabee = ultravox_call_sid
+                print(f"⚠️ Error resolving mapping: {e}. Using Ultravox ID.")
+    
+    print(f"🎯 CABEE CALL SID FOR PAYLOAD: {final_call_sid_for_cabee}")
+    
+    # Extract authentic Ultravox call ID for internal tracking if needed
+    ultravox_call_sid = (
+        http_request.headers.get("x-ultravox-call-id")
+        or http_request.headers.get("x-call-id")
+        or http_request.headers.get("X-Call-ID")
+        or "unknown"
+    )
     
     # Vehicle type mapping
     vehicle_type_mapping = {
@@ -671,7 +718,8 @@ async def handle_create_booking(request: BookingRequest, jwt_token: str, call_id
         "flight_Number": request.flight_Number or "",
         "flight_Info": request.flight_Info or "",
         "house_number": request.house_number or "",
-        "flat_info": request.flat_info or ""
+        "flat_info": request.flat_info or "",
+        "call_sid": final_call_sid_for_cabee
     }
     
     print(f"🌐 CALLING CABEE CREATE BOOKING API:")
@@ -723,33 +771,9 @@ async def handle_create_booking(request: BookingRequest, jwt_token: str, call_id
         print(f"📤 CREATE BOOKING SUCCESS: {json.dumps(result, indent=2)}")
         print(f"✅ New Job Number: {result.get('jobNO')}")
 
-        # Priority: 1) Body parameter call_sid, 2) Python internal registry, 3) Headers from Ultravox (case-insensitive)
-        inferred_call_sid = request.call_sid
-        
-        if not inferred_call_sid:
-            try:
-                from registry import get_most_recent_call_id
-                inferred_call_sid = get_most_recent_call_id()
-                if inferred_call_sid:
-                    print(f"🔍 Found call_id from internal registry: {inferred_call_sid}")
-            except ImportError:
-                print("⚠️ Warning: Could not import internal registry")
-                pass
+        print(f"📡 SAVING JOB RECORD - Call ID: {final_call_sid_for_cabee}")
 
-        if not inferred_call_sid:
-            # Check common Ultravox header names
-            inferred_call_sid = (
-                http_request.headers.get("x-ultravox-call-id")
-                or http_request.headers.get("x-call-id")
-                or http_request.headers.get("X-Call-ID")
-            )
-            
-        if not inferred_call_sid:
-            inferred_call_sid = "unknown"
-        
-        print(f"📡 SAVING JOB RECORD - Call ID: {inferred_call_sid}")
-
-        await _save_job_record(inferred_call_sid, result, request.vehicleTypeId)
+        await _save_job_record(ultravox_call_sid, result, request.vehicleTypeId, final_call_sid_for_cabee)
         
         response_data = {
             "status": "success",
