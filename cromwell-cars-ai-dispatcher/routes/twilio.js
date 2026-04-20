@@ -161,11 +161,41 @@ router.post('/incoming/:agentIdentifier', async (req, res) => {
             console.error(`⚠️ Error checking balance: ${error.message}. Proceeding with default limit.`);
         }
 
+        // 🆔 GENERATE DYNAMIC CABEE CALL ID
+        const cabeeCallId = `C-${Math.random().toString(36).substr(2, 8).toUpperCase()}`;
+        console.log(`🆔 Generated Dynamic Cabee Call ID for Twilio Call: ${cabeeCallId}`);
+
+        // 💉 INJECT CABEE CALL ID INTO TOOLS
+        const injectedTools = agentConfig.tools.map(tool => {
+            try {
+                if (tool.temporaryTool) {
+                    if (!tool.temporaryTool.dynamicParameters) {
+                        tool.temporaryTool.dynamicParameters = [];
+                    }
+                    
+                    tool.temporaryTool.dynamicParameters.push({
+                        name: "cabee_call_id",
+                        location: "PARAMETER_LOCATION_QUERY",
+                        schema: {
+                            type: "string",
+                            default: cabeeCallId,
+                            description: "Internal Session ID"
+                        },
+                        required: true
+                    });
+                    console.log(`Injecting cabee_call_id into dynamicParameters for: ${tool.temporaryTool.modelToolName}`);
+                }
+            } catch (err) {
+                console.warn(`Could not inject Cabee ID into tool: ${err.message}`);
+            }
+            return tool;
+        });
+
         // Create custom call config for this agent
         const customCallConfig = {
             ...ULTRAVOX_CALL_CONFIG,
             systemPrompt: agentConfig.systemPrompt,
-            selectedTools: agentConfig.tools,
+            selectedTools: injectedTools,
             maxDuration: `${timeLimitSeconds}s`,
             timeExceededMessage: "I'm sorry, but your company's balance has run out. Please contact your administrator to add funds. Goodbye!",
             medium: { "twilio": {} },
@@ -181,7 +211,7 @@ router.post('/incoming/:agentIdentifier', async (req, res) => {
         console.log('🤖 CREATING ULTRAVOX AI CALL:');
         console.log(`   Agent: ${agentConfig.agent.agent_name}`);
         console.log(`   Time Limit: ${timeLimitSeconds}s`);
-        console.log(`   Tools Count: ${agentConfig.tools.length}`);
+        console.log(`   Tools Count: ${injectedTools.length}`);
 
         // Create the Ultravox call
         const response = await createUltravoxCall(customCallConfig);
@@ -197,17 +227,21 @@ router.post('/incoming/:agentIdentifier', async (req, res) => {
             timestamp: timestamp,
             trackingId: callId,
             agentIdentifier: agentIdentifier,
-            agentId: agentConfig.agent.id
+            agentId: agentConfig.agent.id,
+            cabeeCallId: cabeeCallId
         });
 
         // 📝 REGISTER CALL IN CROMWELL REGISTRY (CRITICAL FOR TOOL CALL SYNC)
         try {
-            console.log(`📋 Registering call ${response.callId} in Cromwell registry...`);
+            console.log(`📋 Registering call ${response.callId} with Cabee ID ${cabeeCallId} in Cromwell registry...`);
             const toolsBaseUrl = process.env.TOOLS_BASE_URL || 'http://localhost:3000';
             await fetch(`${toolsBaseUrl}/cromwell/register-call`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ call_id: response.callId })
+                body: JSON.stringify({ 
+                    call_id: response.callId,
+                    cabee_call_id: cabeeCallId
+                })
             });
         } catch (regError) {
             console.error('⚠️ Error registering call in Cromwell registry:', regError.message);
@@ -229,6 +263,7 @@ router.post('/incoming/:agentIdentifier', async (req, res) => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     call_id: response.callId,
+                    cabee_call_id: cabeeCallId,
                     status: 'initiated',
                     caller_number: fromNumber
                 })
@@ -352,6 +387,7 @@ router.all('/status-callback', async (req, res) => {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         call_id: ultravox_call_id,
+                        cabee_call_id: cabeeCallId,
                         status: 'completed',
                         duration: Math.floor(callDurationSeconds)
                     })

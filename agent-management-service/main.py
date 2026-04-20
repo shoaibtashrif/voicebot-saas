@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Depends, Request
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Depends, Request, Query
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -41,9 +41,7 @@ if TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN:
         print(f"Warning: Could not initialize Twilio client: {e}")
 
 # Database setup
-import os
-os.makedirs("./data", exist_ok=True)
-SQLALCHEMY_DATABASE_URL = "sqlite:///./data/agents.db"
+SQLALCHEMY_DATABASE_URL = "sqlite:///./agents.db"
 engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
@@ -78,6 +76,7 @@ class CallRecord(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     call_sid = Column(String(100), unique=True, index=True, nullable=False)
+    cabee_call_id = Column(String(100), index=True, nullable=True)
     agent_id = Column(Integer, index=True, nullable=False)
     caller_number = Column(String(20), nullable=True)
     status = Column(String(50), default="initiated")
@@ -142,6 +141,7 @@ class JobRecord(Base):
     destination = Column(String(500), nullable=True)
     vehicleType = Column(String(50), nullable=True)
     call_sid = Column(String(100), index=True, nullable=True)
+    cabee_call_id = Column(String(100), index=True, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class VehicleCapacity(Base):
@@ -196,12 +196,14 @@ class AgentUpdate(BaseModel):
 
 class CallLogRequest(BaseModel):
     call_id: str
+    cabee_call_id: Optional[str] = None
     caller_number: Optional[str] = None
     status: str = "initiated"
     duration: Optional[int] = None
 
 class JobCreate(BaseModel):
     call_sid: str
+    cabee_call_id: Optional[str] = None
     jobNO: Optional[str] = None
     bookingId: Optional[str] = None
     passengerName: Optional[str] = None
@@ -258,6 +260,7 @@ class CallRecordingResponse(BaseModel):
 class WebCallResponse(BaseModel):
     callId: str
     joinUrl: str
+    cabeeCallId: Optional[str] = None
     agent_id: int
     agent_name: str
     company_slug: str
@@ -265,6 +268,7 @@ class WebCallResponse(BaseModel):
 class CallHistoryResponse(BaseModel):
     id: int
     call_sid: str
+    cabee_call_id: Optional[str]
     agent_id: int
     caller_number: Optional[str]
     status: str
@@ -283,6 +287,7 @@ class JobRecordResponse(BaseModel):
     destination: Optional[str] = None
     vehicleType: Optional[str] = None
     call_sid: Optional[str] = None
+    cabee_call_id: Optional[str] = None
     created_at: datetime
 
     class Config:
@@ -610,6 +615,99 @@ async def make_ultravox_request(method: str, endpoint: str, data: dict = None) -
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error calling Ultravox API: {str(e)}")
 
+async def sync_call_with_ultravox(call_id: str, db: Session = None) -> Optional[CallRecord]:
+    """Fetch call details from Ultravox and update the local database record.
+    Manages its own session if none provided to support background tasks.
+    """
+    local_session = False
+    if db is None:
+        db = SessionLocal()
+        local_session = True
+        
+    try:
+        # Give Ultravox 1-2 seconds to finalize the call data
+        import asyncio
+        await asyncio.sleep(2)
+        
+        # Normalize Ultravox ID
+        if not call_id or not re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', call_id):
+            return None
+
+        # Re-query the record within the current session
+        call_record = db.query(CallRecord).filter(CallRecord.call_sid == call_id).first()
+        if not call_record:
+            if local_session: db.close()
+            return None
+            
+        print(f"🔍 Syncing call {call_id} with Ultravox...")
+        # Endpoint is calls/{call_id}
+        try:
+            data = await make_ultravox_request("GET", f"calls/{call_id}")
+        except Exception as api_err:
+            print(f"⚠️ Ultravox API error for {call_id}: {api_err}")
+            return call_record
+
+        updated = False
+        
+        # 1. Update Duration
+        billed_str = data.get("billedDuration")
+        if billed_str:
+            try:
+                # billedDuration is "12.34s"
+                billed_duration = float(billed_str.rstrip('s'))
+                call_record.duration = int(billed_duration)
+                updated = True
+                print(f"⏱️ Updated duration from Ultravox API: {call_record.duration}s")
+            except Exception as e:
+                print(f"⚠️ Error parsing Ultravox duration {billed_str}: {e}")
+        
+        # 2. Update Recording URL
+        recording_url = data.get("recordingUrl")
+        if recording_url:
+            call_record.recording_url = recording_url
+            updated = True
+            
+        # 3. Update Status
+        call_status = data.get("status")
+        if call_status == "ended" and call_record.status != "completed":
+            call_record.status = "completed"
+            updated = True
+
+        if updated:
+            call_record.updated_at = datetime.utcnow()
+            db.commit()
+            db.refresh(call_record)
+        
+        # 4. Handle Billing Deduction (Sole Source of Truth)
+        if not call_record.is_billed and call_record.status == "completed" and call_record.duration and call_record.duration > 0:
+            agent = db.query(WebAgent).filter(WebAgent.id == call_record.agent_id).first()
+            if agent:
+                company = db.query(Company).filter(Company.company_slug == agent.company_slug).first()
+                if company:
+                    minutes_used = call_record.duration / 60.0
+                    cost = minutes_used * (company.call_rate or 0.5)
+                    old_amount = company.balance_amount
+                    company.balance_amount = max(0.0, company.balance_amount - cost)
+                    
+                    if company.call_rate and company.call_rate > 0:
+                        company.balance_minutes = company.balance_amount / company.call_rate
+                    else:
+                        company.balance_minutes = company.balance_amount / 0.5
+                        
+                    call_record.is_billed = True
+                    db.commit()
+                    print(f"💸 DEDUCTED £{cost:.2f} ({minutes_used:.2f} mins) for call {call_record.call_sid}. Balance: {company.balance_amount}")
+            
+        return call_record
+    except Exception as e:
+        print(f"❌ Error in sync_call_with_ultravox for {call_id}: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return None
+    finally:
+        if local_session:
+            db.close()
+
 # API Routes
 @app.get("/api/companies/{company_slug}/balance")
 async def get_company_balance(company_slug: str, db: Session = Depends(get_db)):
@@ -760,7 +858,8 @@ async def create_job(job: JobCreate, db: Session = Depends(get_db)):
         origin=job.origin,
         destination=job.destination,
         vehicleType=job.vehicleType,
-        call_sid=job.call_sid
+        call_sid=job.call_sid,
+        cabee_call_id=job.cabee_call_id
     )
     db.add(db_job)
     db.commit()
@@ -795,18 +894,108 @@ async def get_agent_by_slug(company_slug: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Agent not found")
     return agent
 
+# @app.post("/api/agents", response_model=AgentResponse)
+# async def create_agent(agent: AgentCreate, db: Session = Depends(get_db)):
+#     """Create a new agent"""
+#     # Generate company slug
+#     company_slug = create_slug(agent.company_name)
+    
+#     # Check if slug already exists
+#     existing_agent = db.query(WebAgent).filter(WebAgent.company_slug == company_slug).first()
+#     if existing_agent:
+#         # Add timestamp to make it unique
+#         company_slug = f"{company_slug}-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    
+#     import uuid
+#     api_token = agent.api_Token if agent.api_Token else str(uuid.uuid4())
+
+#     # Create new agent
+#     db_agent = WebAgent(
+#         agent_name=agent.agent_name,
+#         company_name=agent.company_name,
+#         company_id=agent.company_id,
+#         company_slug=company_slug,
+#         greeting_message=agent.greeting_message,
+#         knowledge_base=agent.knowledge_base,
+#         knowledge_type=agent.knowledge_type,
+#         api_Token=api_token,
+#         ultravox_agent_id=agent.ultravox_agent_id,
+#         voice=agent.voice,
+#         psid=agent.psid,
+#         web_call_pin=agent.web_call_pin
+#     )
+    
+#     db.add(db_agent)
+#     db.commit()
+#     db.refresh(db_agent)
+    
+#     # Ensure company exists in companies table
+#     company = db.query(Company).filter(Company.company_slug == company_slug).first()
+#     if not company:
+#         new_company = Company(
+#             company_name=agent.company_name or agent.agent_name,
+#             company_slug=company_slug,
+#             balance_minutes=20  # Default balance
+#         )
+#         # If company_id is provided and doesn't conflict, we could potentially use it
+#         # but the table uses AUTOINCREMENT for ID, so we'll let it handle it.
+#         db.add(new_company)
+#         db.commit()
+    
+#     # Ingest knowledge base if provided
+#     if agent.knowledge_base and agent.knowledge_base.strip():
+#         try:
+#             if agent.knowledge_type == 'url':
+#                 result = rag_service.ingest_url(db_agent.id, agent.knowledge_base)
+#                 print(f"✅ Ingested URL knowledge: {result.get('chunks_created', 0)} chunks")
+#             else:  # text or file (file content passed as text in creation)
+#                 result = rag_service.ingest_text(db_agent.id, agent.knowledge_base, source_type=agent.knowledge_type or "text")
+#                 print(f"✅ Ingested {agent.knowledge_type} knowledge: {result.get('chunks_created', 0)} chunks")
+            
+#             # Update knowledge source
+#             db_agent.knowledge_source = agent.knowledge_base[:100] if agent.knowledge_type == 'url' else "direct_input"
+#             db.commit()
+#         except Exception as e:
+#             print(f"❌ Error ingesting knowledge: {e}")
+#             # Don't fail agent creation if knowledge ingestion fails
+    
+#     return db_agent
+
+
+
+
 @app.post("/api/agents", response_model=AgentResponse)
 async def create_agent(agent: AgentCreate, db: Session = Depends(get_db)):
     """Create a new agent"""
+
+    # Block if company_id is not provided
+    if agent.company_id is None:
+        raise HTTPException(
+            status_code=400,
+            detail="company_id is required."
+        )
+
+    # Check if an agent already exists for this company_id
+    existing_agent = db.query(WebAgent).filter(
+        WebAgent.company_id == agent.company_id
+    ).first()
+
+    print(f"DEBUG >>> incoming company_id={agent.company_id} | existing={existing_agent}")
+
+    if existing_agent:
+        raise HTTPException(
+            status_code=409,
+            detail=f"An agent already exists for company_id '{agent.company_id}'. Each company can only have one agent."
+        )
+
     # Generate company slug
     company_slug = create_slug(agent.company_name)
-    
+
     # Check if slug already exists
-    existing_agent = db.query(WebAgent).filter(WebAgent.company_slug == company_slug).first()
-    if existing_agent:
-        # Add timestamp to make it unique
+    existing_slug = db.query(WebAgent).filter(WebAgent.company_slug == company_slug).first()
+    if existing_slug:
         company_slug = f"{company_slug}-{datetime.now().strftime('%Y%m%d%H%M%S')}"
-    
+
     import uuid
     api_token = agent.api_Token if agent.api_Token else str(uuid.uuid4())
 
@@ -825,42 +1014,40 @@ async def create_agent(agent: AgentCreate, db: Session = Depends(get_db)):
         psid=agent.psid,
         web_call_pin=agent.web_call_pin
     )
-    
+
     db.add(db_agent)
     db.commit()
     db.refresh(db_agent)
-    
+
     # Ensure company exists in companies table
     company = db.query(Company).filter(Company.company_slug == company_slug).first()
     if not company:
         new_company = Company(
             company_name=agent.company_name or agent.agent_name,
             company_slug=company_slug,
-            balance_minutes=20  # Default balance
+            balance_minutes=20
         )
-        # If company_id is provided and doesn't conflict, we could potentially use it
-        # but the table uses AUTOINCREMENT for ID, so we'll let it handle it.
         db.add(new_company)
         db.commit()
-    
+
     # Ingest knowledge base if provided
     if agent.knowledge_base and agent.knowledge_base.strip():
         try:
             if agent.knowledge_type == 'url':
                 result = rag_service.ingest_url(db_agent.id, agent.knowledge_base)
                 print(f"✅ Ingested URL knowledge: {result.get('chunks_created', 0)} chunks")
-            else:  # text or file (file content passed as text in creation)
+            else:
                 result = rag_service.ingest_text(db_agent.id, agent.knowledge_base, source_type=agent.knowledge_type or "text")
                 print(f"✅ Ingested {agent.knowledge_type} knowledge: {result.get('chunks_created', 0)} chunks")
-            
-            # Update knowledge source
+
             db_agent.knowledge_source = agent.knowledge_base[:100] if agent.knowledge_type == 'url' else "direct_input"
             db.commit()
         except Exception as e:
             print(f"❌ Error ingesting knowledge: {e}")
-            # Don't fail agent creation if knowledge ingestion fails
-    
+
     return db_agent
+
+
 
 @app.put("/api/agents/{agent_id}", response_model=AgentResponse)
 async def update_agent(agent_id: int, agent: AgentUpdate, db: Session = Depends(get_db)):
@@ -993,6 +1180,29 @@ async def create_web_call(
     # Use agent's configured voice or fallback to default
     voice = agent.voice or "terrence"
     
+    # 🆔 GENERATE DYNAMIC CABEE CALL ID
+    import uuid
+    cabee_call_id = f"C-{uuid.uuid4().hex[:8].upper()}"
+    print(f"🆔 Generated Dynamic Cabee Call ID for Legacy Web Call: {cabee_call_id}")
+    
+    # 💉 INJECT CABEE CALL ID INTO TOOLS
+    if agent_tools:
+        for tool in agent_tools:
+            if "temporaryTool" in tool:
+                temp_tool = tool["temporaryTool"]
+                if "dynamicParameters" not in temp_tool:
+                    temp_tool["dynamicParameters"] = []
+                temp_tool["dynamicParameters"].append({
+                    "name": "cabee_call_id",
+                    "location": "PARAMETER_LOCATION_QUERY",
+                    "schema": {
+                        "type": "string",
+                        "default": cabee_call_id,
+                        "description": "Internal Session ID"
+                    },
+                    "required": True
+                })
+    
     time_limit_seconds = int(company.balance_minutes * 60)
     
     ultravox_config = {
@@ -1044,6 +1254,7 @@ async def create_web_call(
             # 6. Log Call Initiation
             call_record = CallRecord(
                 call_sid=call_id,
+                cabee_call_id=cabee_call_id,
                 agent_id=agent.id,
                 status="initiated",
                 caller_number="Web Call",
@@ -1061,7 +1272,10 @@ async def create_web_call(
                 async with httpx.AsyncClient() as dispatcher_client:
                     reg_response = await dispatcher_client.post(
                         f"{dispatcher_url}/cromwell/register-call",
-                        json={"call_id": call_id},
+                        json={
+                            "call_id": call_id,
+                            "cabee_call_id": cabee_call_id
+                        },
                         timeout=5.0
                     )
                     if reg_response.status_code == 200:
@@ -1076,6 +1290,7 @@ async def create_web_call(
             return WebCallResponse(
                 callId=call_id,
                 joinUrl=join_url,
+                cabeeCallId=cabee_call_id,
                 agent_id=agent.id,
                 agent_name=agent.agent_name,
                 company_slug=agent.company_slug
@@ -1982,6 +2197,7 @@ async def twilio_incoming(
     # Log the call
     call_record = CallRecord(
         call_sid=CallSid,
+        cabee_call_id=request.query_params.get("cabee_call_id"),
         agent_id=agent.id,
         caller_number=From,
         status="initiated"
@@ -2013,25 +2229,41 @@ async def twilio_incoming(
 
 @app.post("/twilio/status-callback")
 async def twilio_status_callback(
+    request: Request,
     CallSid: str = Form(...),
     CallStatus: str = Form(None),
-    CallDuration: int = Form(None),
+    CallDuration: Optional[int] = Form(None),
     RecordingUrl: str = Form(None),
+    ultravox_call_id: Optional[str] = Query(None),
     db: Session = Depends(get_db)
 ):
-    """Update call record status and recording URL"""
-    call_record = db.query(CallRecord).filter(CallRecord.call_sid == CallSid).first()
+    """Update call record status and recording URL with support for Ultravox mapping"""
+    # 1. Try to find by Ultravox Call ID (passed in query param by dispatcher)
+    call_record = None
+    if ultravox_call_id:
+        call_record = db.query(CallRecord).filter(CallRecord.call_sid == ultravox_call_id).first()
+    
+    # 2. Fallback to Twilio CallSid (stored in call_sid column for some calls)
+    if not call_record:
+        call_record = db.query(CallRecord).filter(CallRecord.call_sid == CallSid).first()
+
     if call_record:
         if CallStatus:
             call_record.status = CallStatus
-        if CallDuration:
-            call_record.duration = CallDuration
+        
         if RecordingUrl:
             call_record.recording_url = RecordingUrl
         
         call_record.updated_at = datetime.utcnow()
         db.commit()
-        print(f"✅ Updated call {CallSid} status to {CallStatus}")
+        print(f"✅ Updated call {call_record.call_sid} (Twilio: {CallSid}) status to {CallStatus}")
+        
+        # 3. ALWAYS trigger sync with Ultravox for finished calls (Sole Source of Truth)
+        if CallStatus in ["completed", "busy", "no-answer", "canceled", "failed"]:
+            import asyncio
+            asyncio.create_task(sync_call_with_ultravox(call_record.call_sid))
+    else:
+        print(f"⚠️ Status callback: Record not found for Twilio SID {CallSid} or Ultravox ID {ultravox_call_id}")
     
     return {"status": "success"}
 
@@ -2114,14 +2346,26 @@ async def log_agent_call(
         # Update existing record
         if call_data.status:
             call_record.status = call_data.status
-        if call_data.duration is not None:
-            call_record.duration = call_data.duration
+        
+        if call_data.cabee_call_id:
+            call_record.cabee_call_id = call_data.cabee_call_id
+            
+        # Trigger background sync for completed calls (Sole Source of Truth)
+        if call_data.status == "completed":
+            import asyncio
+            asyncio.create_task(sync_call_with_ultravox(call_record.call_sid, db))
+
         if call_data.caller_number:
             call_record.caller_number = call_data.caller_number
             
         call_record.updated_at = datetime.utcnow()
         db.commit()
         db.refresh(call_record)
+        
+        # Trigger background sync for completed calls
+        if call_data.status == "completed":
+            import asyncio
+            asyncio.create_task(sync_call_with_ultravox(call_record.call_sid, db))
         
         # Deduct balance if completed (handling update case)
         if not call_record.is_billed and call_data.status == "completed" and call_data.duration and call_data.duration > 0:
@@ -2145,6 +2389,7 @@ async def log_agent_call(
 
     call_record = CallRecord(
         call_sid=call_data.call_id,
+        cabee_call_id=call_data.cabee_call_id,
         agent_id=agent_id,
         caller_number=call_data.caller_number,
         status=call_data.status,
@@ -2214,49 +2459,33 @@ async def ultravox_webhook(
             print(f"⚠️ Webhook error: Call record {call_id} not found in database.")
             return {"status": "error", "message": "Call not found"}
         
-        # Update status and duration
+        # Update status and trigger sync (Sole Source of Truth)
         call_record.status = "completed"
-        
-        billed_duration = 0
-        billed_str = call_data.get("billedDuration")
-        if billed_str:
-            # billedDuration is "12.34s"
-            try:
-                billed_duration = float(billed_str.rstrip('s'))
-                call_record.duration = int(billed_duration)
-            except Exception as e:
-                print(f"⚠️ Error parsing duration {billed_str}: {e}")
-                
         call_record.updated_at = datetime.utcnow()
         db.commit()
         
-        # Deduct balance from company
-        agent = db.query(WebAgent).filter(WebAgent.id == call_record.agent_id).first()
-        if not call_record.is_billed and agent and billed_duration > 0:
-            company = db.query(Company).filter(Company.company_slug == agent.company_slug).first()
-            if company:
-                # billed_duration is in seconds, so we convert to minutes
-                minutes_used = billed_duration / 60.0
-                cost = minutes_used * (company.call_rate or 0.5)
-                
-                old_amount = company.balance_amount
-                company.balance_amount = max(0.0, company.balance_amount - cost)
-                
-                # Sync balance_minutes (float minutes available)
-                if company.call_rate and company.call_rate > 0:
-                    company.balance_minutes = company.balance_amount / company.call_rate
-                else:
-                    # Fallback to 0.5 if rate is not set
-                    company.balance_minutes = company.balance_amount / 0.5
-                
-                call_record.is_billed = True
-                db.commit()
-                print(f"💸 DEDUCTED £{cost:.2f} ({minutes_used:.2f} mins) for agent {agent.agent_name}. Amount: {old_amount} -> {company.balance_amount}. Mins: {company.balance_minutes}")
+        import asyncio
+        asyncio.create_task(sync_call_with_ultravox(call_id))
         
         return {"status": "success", "call_id": call_id}
     except Exception as e:
         print(f"❌ Webhook processing error: {str(e)}")
         return {"status": "error", "message": str(e)}
+
+@app.post("/api/calls/{call_id}/sync")
+async def sync_call_manually(call_id: str, db: Session = Depends(get_db)):
+    """Manually trigger a sync with Ultravox for a specific call"""
+    record = await sync_call_with_ultravox(call_id, db)
+    if not record:
+        raise HTTPException(status_code=404, detail="Call record not found")
+    
+    return {
+        "status": "success",
+        "call_id": record.call_sid,
+        "duration": record.duration,
+        "recording_url": record.recording_url,
+        "db_status": record.status
+    }
 
 @app.get("/api/dashboard-data")
 async def get_dashboard_data(
@@ -2277,6 +2506,21 @@ async def get_dashboard_data(
     """
     from datetime import date, timedelta
     from sqlalchemy import func
+
+    # Auto-sync recent calls that have missing duration
+    one_hour_ago = datetime.utcnow() - timedelta(hours=1)
+    missing_duration_calls = (
+        db.query(CallRecord)
+        .filter(CallRecord.created_at >= one_hour_ago)
+        .filter(CallRecord.status == "completed")
+        .filter((CallRecord.duration == 0) | (CallRecord.duration == None))
+        .all()
+    )
+    if missing_duration_calls:
+        print(f"🔄 Auto-syncing {len(missing_duration_calls)} recent calls with missing duration...")
+        import asyncio
+        for call in missing_duration_calls:
+            asyncio.create_task(sync_call_with_ultravox(call.call_sid))
 
     # --- Resolve the company ---
     company = None

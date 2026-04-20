@@ -659,8 +659,9 @@
                     this.debugLog('🔄 Creating call session via API');
                     this.updateStatus('🔄 Creating call session...');
                     const callData = await this.createCall();
-                    this.debugLog(`✅ Call created: ${callData.callId}`);
+                    this.debugLog(`✅ Call created: ${callData.callId} (Cabee ID: ${callData.cabeeCallId})`);
                     this.currentCallId = callData.callId;
+                    this.cabeeCallId = callData.cabeeCallId;
                     this.startTime = Date.now();
                     this.completionLogged = false;
 
@@ -775,6 +776,7 @@
                         },
                         body: JSON.stringify({
                             call_id: this.currentCallId,
+                            cabee_call_id: this.cabeeCallId,
                             status: 'completed',
                             duration: duration
                         })
