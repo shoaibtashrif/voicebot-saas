@@ -268,7 +268,7 @@ class WebCallResponse(BaseModel):
 class CallHistoryResponse(BaseModel):
     id: int
     call_sid: str
-    cabee_call_id: Optional[str]
+    cabee_call_id: Optional[str] = None
     agent_id: int
     caller_number: Optional[str]
     status: str
@@ -2292,6 +2292,7 @@ async def get_agent_call_history(
     merged_calls = {c.call_sid: CallHistoryResponse(
         id=c.id,
         call_sid=c.call_sid,
+        cabee_call_id=c.cabee_call_id,
         agent_id=c.agent_id,
         caller_number=c.caller_number,
         status=c.status,
@@ -2310,14 +2311,18 @@ async def get_agent_call_history(
             except:
                 created_at = datetime.utcnow()
                 
+            # Try to fetch cabee_call_id from registry as fallback
+            from registry import get_cabee_id
+            uv_cabee_id = get_cabee_id(uv_call.call_id)
+            
             merged_calls[uv_call.call_id] = CallHistoryResponse(
                 id=0, # Placeholder for non-local calls
                 call_sid=uv_call.call_id,
+                cabee_call_id=uv_cabee_id,
                 agent_id=agent_id,
                 caller_number=uv_call.caller_phone_number,
                 status=uv_call.status,
                 # Provide recording URL if status is not initiated (meaning it has joined or ended)
-                # We'll try to provide it even if recording_enabled is false, just in case
                 recording_url=f"/api/agents/{agent_id}/calls/{uv_call.call_id}/recording/stream" if uv_call.status != "initiated" else None,
                 duration=uv_call.duration,
                 created_at=created_at
