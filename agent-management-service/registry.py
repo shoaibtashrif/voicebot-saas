@@ -29,6 +29,15 @@ def get_call_id_by_cabee(cabee_id: str):
         return entry["ultravox_call_id"]
     return None
 
+def get_cabee_id(call_id: str):
+    """Retrieve Cabee Call ID using the Ultravox Call ID."""
+    if not call_id:
+        return None
+    entry = active_call_registry.get(call_id)
+    if entry:
+        return entry.get("cabee_call_id")
+    return None
+
 def _prune_registries():
     # Prune calls older than 2 hours to avoid memory leaks
     cutoff = time.time() - 2 * 3600
