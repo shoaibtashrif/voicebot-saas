@@ -866,10 +866,15 @@ async def create_job(job: JobCreate, db: Session = Depends(get_db)):
     db.refresh(db_job)
     return {"status": "success", "job_id": db_job.id}
 
-@app.get("/api/jobs/{call_sid}", response_model=List[JobRecordResponse])
-async def get_jobs_by_call_sid(call_sid: str, db: Session = Depends(get_db)):
-    """Get all job records for a specific call SID"""
-    jobs = db.query(JobRecord).filter(JobRecord.call_sid == call_sid).all()
+@app.get("/api/jobs/{cabee_call_id}", response_model=List[JobRecordResponse])
+async def get_jobs_by_cabee_id(cabee_call_id: str, db: Session = Depends(get_db)):
+    """Get all job records for a specific Cabee Call ID"""
+    jobs = db.query(JobRecord).filter(JobRecord.cabee_call_id == cabee_call_id).all()
+    
+    # Fallback to call_sid if no jobs found by cabee_call_id (for backward compatibility)
+    if not jobs:
+        jobs = db.query(JobRecord).filter(JobRecord.call_sid == cabee_call_id).all()
+        
     return jobs
 
 @app.get("/api/agents", response_model=List[AgentResponse])
