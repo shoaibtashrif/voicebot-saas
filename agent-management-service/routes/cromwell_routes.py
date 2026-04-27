@@ -58,7 +58,7 @@ class VehicleTypeRequest(BaseModel):
     companySlug: str
 
 class BookingRequest(BaseModel):
-    operation: str
+    operation: Optional[str] = None
     companyId: Optional[Union[str, int]] = "99"
     companySlug: Optional[str] = None
     call_sid: Optional[str] = None
@@ -292,17 +292,18 @@ async def validate_address(request: AddressValidationRequest):
             }
 
         request_payload = {
-            "address_lines": enriched["address_lines"],
-            "postcode": enriched["postcode"],
+            "addressLines": enriched["address_lines"],
+            "postcode": enriched["postcode"] or "",
+            "building": getattr(request, "building", "") or ""
         }
         
-        print(f"🌐 CALLING CROMWELL ADDRESS API:")
-        print(f"   URL: {CROMWELL_API_BASE}/address/validate")
+        print(f"🌐 CALLING CABEE ADDRESS API:")
+        print(f"   URL: https://capi.cabee-est.com/api/Job/validate")
         print(f"   Payload: {json.dumps(request_payload, indent=2)}")
         
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                f"{CROMWELL_API_BASE}/address/validate",
+                "https://capi.cabee-est.com/api/Job/validate",
                 headers={"Content-Type": "application/json"},
                 json=request_payload,
                 timeout=30.0
@@ -326,15 +327,16 @@ async def validate_address(request: AddressValidationRequest):
                             flattened_lines.append(str(line))
                     
                     corrected_payload = {
-                        "address_lines": flattened_lines,
-                        "postcode": request.postcode,
+                        "addressLines": flattened_lines,
+                        "postcode": request.postcode or "",
+                        "building": getattr(request, "building", "") or ""
                     }
                     
                     print(f"🔄 RETRYING WITH CORRECTED PAYLOAD: {json.dumps(corrected_payload, indent=2)}")
                     
                     # Retry with corrected format
                     retry_response = await client.post(
-                        f"{CROMWELL_API_BASE}/address/validate",
+                        "https://capi.cabee-est.com/api/Job/validate",
                         headers={"Content-Type": "application/json"},
                         json=corrected_payload,
                         timeout=30.0
@@ -343,6 +345,12 @@ async def validate_address(request: AddressValidationRequest):
                     if retry_response.is_success:
                         result = retry_response.json()
                         print(f"✅ AUTO-CORRECTION SUCCESSFUL")
+                        # Map response to candidates structure for backward compatibility
+                        normalized = result.get("normalized_address")
+                        if normalized and normalized.get("formatted"):
+                            result["candidates"] = [{"formatted": normalized["formatted"]}]
+                        else:
+                            result["candidates"] = []
                         print(f"📤 API RESPONSE DATA: {json.dumps(result, indent=2)}")
                         return result
                     else:
@@ -375,16 +383,13 @@ async def validate_address(request: AddressValidationRequest):
                     }
             
             result = response.json()
-            if (
-                landmark_fallback_candidate
-                and isinstance(result, dict)
-                and not result.get("candidates")
-            ):
-                return {
-                    "success": True,
-                    "candidates": [landmark_fallback_candidate],
-                    "source": "local_landmark_fallback"
-                }
+            # Map new API response format to expected candidates structure
+            normalized = result.get("normalized_address")
+            if normalized and normalized.get("formatted"):
+                result["candidates"] = [{"formatted": normalized["formatted"]}]
+            elif "candidates" not in result:
+                result["candidates"] = []
+                
             print(f"📤 API RESPONSE DATA: {json.dumps(result, indent=2)}")
             print(f"✅ ADDRESS VALIDATION SUCCESS")
             print(f"🔍 Found {len(result.get('candidates', []))} address candidates")
@@ -806,9 +811,9 @@ async def handle_get_booking(request: BookingRequest, jwt_token: str, call_id: s
         clean_job_no = request.jobNO.replace("-", "")
         if clean_job_no != request.jobNO:
             print(f"🔧 CLEANED JOB NUMBER: {request.jobNO} → {clean_job_no}")
-        url = f"{CABEE_API_BASE}/Job/GetOnlineJobs?jobNO={clean_job_no}"
+        url = f"{CABEE_API_BASE}/Job/GetOnlineJobForBot?jobNo={clean_job_no}"
     elif request.Phone:
-        url = f"{CABEE_API_BASE}/Job/GetOnlineJobs?phoneNumber={request.Phone}"
+        url = f"{CABEE_API_BASE}/Job/GetOnlineJobForBot?phoneNumber={request.Phone}"
     else:
         return {
             "status": "error",
