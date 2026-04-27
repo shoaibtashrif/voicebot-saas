@@ -685,6 +685,15 @@ async def sync_call_with_ultravox(call_id: str, db: Session = None) -> Optional[
                 company = db.query(Company).filter(Company.company_slug == agent.company_slug).first()
                 if company:
                     minutes_used = call_record.duration / 60.0
+                    
+                    # Cap minutes_used to available balance if call exceeded it
+                    max_billable_minutes = company.balance_amount / (company.call_rate or 0.5)
+                    if minutes_used > max_billable_minutes:
+                        print(f"⚠️ Call duration {minutes_used:.2f}m exceeded balance {max_billable_minutes:.2f}m. Capping record.")
+                        minutes_used = max_billable_minutes
+                        # Update the duration in record so dashboard doesn't show over-consumption
+                        call_record.duration = int(minutes_used * 60)
+
                     cost = minutes_used * (company.call_rate or 0.5)
                     old_amount = company.balance_amount
                     company.balance_amount = max(0.0, company.balance_amount - cost)

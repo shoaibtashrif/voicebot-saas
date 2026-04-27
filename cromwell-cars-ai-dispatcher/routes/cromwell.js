@@ -45,6 +45,67 @@ function getMostRecentCallId() {
 // ===== END CALL ID REGISTRY =====
 
 
+async function enrichAddressInput(addressLines, postcode) {
+    if (postcode || !addressLines || addressLines.length === 0) {
+        return { addressLines, postcode };
+    }
+
+    const firstLine = String(addressLines[0]).trim();
+    if (!firstLine) {
+        return { addressLines, postcode };
+    }
+
+    const knownLandmarks = {
+        "natural history museum": "SW7 5BD",
+        "heathrow airport terminal 5": "TW6 2GA",
+        "buckingham palace": "SW1A 1AA"
+    };
+
+    const mapped = knownLandmarks[firstLine.toLowerCase()];
+    if (mapped) {
+        return { addressLines, postcode: mapped };
+    }
+
+    // Fallback: infer postcode for famous places via Nominatim
+    try {
+        const response = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(firstLine)}&format=jsonv2&addressdetails=1&limit=1`, {
+            headers: { "User-Agent": "voicebot-agent-dispatcher/1.0" },
+            signal: AbortSignal.timeout(8000)
+        });
+        if (response.ok) {
+            const data = await response.json();
+            if (data && data.length > 0) {
+                const addr = data[0].address || {};
+                let inferred = addr.postcode;
+                if (!inferred && data[0].display_name) {
+                    const match = data[0].display_name.match(/\b([A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2})\b/i);
+                    if (match) inferred = match[1];
+                }
+                
+                if (inferred) {
+                    inferred = inferred.toUpperCase();
+                    if (!inferred.includes(' ') && inferred.length > 3) {
+                        inferred = `${inferred.slice(0, -3)} ${inferred.slice(-3)}`;
+                    }
+                    
+                    const displayName = data[0].display_name || "";
+                    const parts = displayName.split(',');
+                    const secondLine = parts.length > 1 ? parts[1].trim() : null;
+                    const enrichedLines = [...addressLines];
+                    if (secondLine && !firstLine.toLowerCase().includes(secondLine.toLowerCase())) {
+                        enrichedLines.push(secondLine);
+                    }
+                    return { addressLines: enrichedLines, postcode: inferred };
+                }
+            }
+        }
+    } catch (e) {
+        console.log(`⚠️ Nominatim fallback failed: ${e.message}`);
+    }
+
+    return { addressLines, postcode };
+}
+
 router.post('/validateAddress', async (req, res) => {
     const timestamp = new Date().toISOString();
     const callId = `addr_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -78,19 +139,21 @@ router.post('/validateAddress', async (req, res) => {
             console.log(`✅ ALREADY ARRAY: ${JSON.stringify(parsedAddressLines)}`);
         }
 
-        const requestPayload = {
-            address_lines: parsedAddressLines,
-            postcode: postcode,
+        const enriched = await enrichAddressInput(parsedAddressLines, postcode);
 
+        const requestPayload = {
+            addressLines: enriched.addressLines,
+            postcode: enriched.postcode || "",
+            building: building || ""
         };
 
-        console.log('🌐 CALLING CROMWELL ADDRESS API:');
-        console.log(`   URL: ${CROMWELL_API_BASE}/address/validate`);
+        console.log('🌐 CALLING CABEE ADDRESS API:');
+        console.log(`   URL: https://capi.cabee-est.com/api/Job/validate`);
         console.log(`   Method: POST`);
         console.log(`   Payload:`, JSON.stringify(requestPayload, null, 2));
 
-        // Call the real Cromwell Cars address validation API
-        const response = await fetch(`${CROMWELL_API_BASE}/address/validate`, {
+        // Call the real Cabee address validation API
+        const response = await fetch(`https://capi.cabee-est.com/api/Job/validate`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -108,6 +171,15 @@ router.post('/validateAddress', async (req, res) => {
         }
 
         const result = await response.json();
+        
+        // Map new API response format to expected candidates structure
+        const normalized = result.normalized_address;
+        if (normalized && normalized.formatted) {
+            result.candidates = [{ formatted: normalized.formatted }];
+        } else if (!result.candidates) {
+            result.candidates = [];
+        }
+
         console.log('📤 API RESPONSE DATA:');
         console.log(JSON.stringify(result, null, 2));
 
@@ -554,10 +626,10 @@ router.post('/bookCab', async (req, res) => {
 
                 if (jobNO) {
                     // CORRECT: Add parameter name
-                    getBookingUrl = `${CABEE_API_BASE}/Job/GetOnlineJobs?jobNO=${jobNO}`;
+                    getBookingUrl = `${CABEE_API_BASE}/Job/GetOnlineJobForBot?jobNo=${jobNO}`;
                 } else if (Phone) {
                     // CORRECT: Use phoneNumber parameter
-                    getBookingUrl = `${CABEE_API_BASE}/Job/GetOnlineJobs?phoneNumber=${Phone}`;
+                    getBookingUrl = `${CABEE_API_BASE}/Job/GetOnlineJobForBot?phoneNumber=${Phone}`;
                 } else {
                     throw new Error('Either job number or phone number is required to get booking details');
                 }
@@ -613,7 +685,7 @@ router.post('/bookCab', async (req, res) => {
                 // First, try to get the existing booking to use current values
                 console.log(`🔍 GETTING EXISTING BOOKING: ${jobNO}`);
                 // Use the token for the specific company if known, otherwise typical flow
-                const bookCabGetUrl = `${CABEE_API_BASE}/Job/GetOnlineJobs?jobNO=${encodeURIComponent(jobNO)}`;
+                const bookCabGetUrl = `${CABEE_API_BASE}/Job/GetOnlineJobForBot?jobNo=${encodeURIComponent(jobNO)}`;
 
                 let existingBooking = null;
 
@@ -1074,7 +1146,7 @@ router.post('/updateBooking', async (req, res) => {
         // 1) Get existing booking
         console.log(`🔍 GETTING EXISTING BOOKING: ${jobNO}`);
         // Use the token for the specific company if known, otherwise typical flow
-        const dedicatedGetUrl = `${CABEE_API_BASE}/Job/GetOnlineJobs?jobNO=${encodeURIComponent(jobNO)}`;
+        const dedicatedGetUrl = `${CABEE_API_BASE}/Job/GetOnlineJobForBot?jobNo=${encodeURIComponent(jobNO)}`;
 
         let existingBooking = null;
 
